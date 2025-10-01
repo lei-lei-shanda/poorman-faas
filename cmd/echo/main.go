@@ -148,9 +148,10 @@ func run(clientset *kubernetes.Clientset) error {
 			Ports: []apiv1.ServicePort{{
 				Port:       8000,
 				TargetPort: intstr.FromInt(8000),
+				NodePort:   30080,
 				Protocol:   apiv1.ProtocolTCP,
 			}},
-			Type: apiv1.ServiceTypeLoadBalancer,
+			Type: apiv1.ServiceTypeNodePort,
 		},
 	}
 
@@ -165,7 +166,8 @@ func run(clientset *kubernetes.Clientset) error {
 	// In a real implementation, you'd want to poll until the external IP is assigned
 	// For now, we'll return the service name and port
 	fmt.Printf("Service created: %s:%d\n", createdService.Name, createdService.Spec.Ports[0].Port)
-	fmt.Printf("Access via: http://%s:%d/echo/\n", createdService.Name, createdService.Spec.Ports[0].Port)
+	fmt.Printf("Access via NodePort: http://localhost:%d/echo/\n", createdService.Spec.Ports[0].NodePort)
+	fmt.Printf("Access via port-forward: kubectl port-forward service/%s 8000:8000\n", createdService.Name)
 
 	return nil
 }
