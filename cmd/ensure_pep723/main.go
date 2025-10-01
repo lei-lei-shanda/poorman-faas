@@ -13,21 +13,23 @@ import (
 //go:embed echo.py
 var pythonScript string
 
+// Schema represents the expected requirements for a Python script, according to PEP 723
 type Schema struct {
 	RequiresPython string   `toml:"requires-python"`
 	Dependencies   []string `toml:"dependencies"`
 }
 
+// Validate checks if the script is PEP 723 compliant
 func (schema Schema) Validate() bool {
-	return schema.EnsurePy312() && schema.EnsureDependencies()
+	return schema.ensurePY312() && schema.ensureDeps()
 }
 
-func (schema Schema) EnsurePy312() bool {
+func (schema Schema) ensurePY312() bool {
 	// TODO: support `==3.12.4`, `>=3.11` too.
 	return schema.RequiresPython == ">=3.12"
 }
 
-func (schema Schema) EnsureDependencies() bool {
+func (schema Schema) ensureDeps() bool {
 	// TODO: check all packages exists
 	return true
 }
