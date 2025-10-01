@@ -100,9 +100,8 @@ func run(clientset *kubernetes.Clientset) error {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{{
 						Name:    "python-container",
-						Image:   "python:3.12-slim",
-						Command: []string{"sh", "-c"},
-						Args:    []string{"python -c $(cat /scripts/main.py)"},
+						Image:   "ghcr.io/astral-sh/uv:python3.12-alpine",
+						Command: []string{"uv", "run", "--script", "/scripts/main.py"},
 						Ports: []apiv1.ContainerPort{{
 							ContainerPort: 8000,
 							Protocol:      apiv1.ProtocolTCP,
