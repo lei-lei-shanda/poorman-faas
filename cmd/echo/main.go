@@ -146,10 +146,13 @@ func run(clientset *kubernetes.Clientset) error {
 				"app": "python-app",
 			},
 			Ports: []apiv1.ServicePort{{
-				Port:       8000,
+				Port:       30080,
 				TargetPort: intstr.FromInt(8000),
-				Protocol:   apiv1.ProtocolTCP,
 			}},
+			// following this guide, but not working:
+			// https://kind.sigs.k8s.io/docs/user/loadbalancer/
+			// > kubectl get service/python-app-service -o=jsonpath='{.status.loadBalancer.ingress[0].ip}'
+			// returns empty string
 			Type: apiv1.ServiceTypeLoadBalancer,
 		},
 	}
@@ -161,11 +164,9 @@ func run(clientset *kubernetes.Clientset) error {
 		return fmt.Errorf("serviceClient.Create(): %w", err)
 	}
 
-	// wait for service to get external IP
-	// In a real implementation, you'd want to poll until the external IP is assigned
-	// For now, we'll return the service name and port
-	fmt.Printf("Service created: %s:%d\n", createdService.Name, createdService.Spec.Ports[0].Port)
-	fmt.Printf("Access via: http://%s:%d/echo/\n", createdService.Name, createdService.Spec.Ports[0].Port)
+	// must use port-forward locally to access:
+	// > kubectl port-forward service/python-app-service 30080:30080 &
+	fmt.Printf("Access via NodePort: http://localhost:%d/echo/\n", createdService.Spec.Ports[0].TargetPort.IntVal)
 
 	return nil
 }
