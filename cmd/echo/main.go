@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -100,7 +100,7 @@ func run(clientset *kubernetes.Clientset) error {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{{
 						Name:    "python-container",
-						Image:   "python:3.9-slim",
+						Image:   "python:3.12-slim",
 						Command: []string{"sh", "-c"},
 						Args:    []string{"python -c $(cat /scripts/main.py)"},
 						Ports: []apiv1.ContainerPort{{
@@ -184,6 +184,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// fmt.Printf("Kubeconfig: %#v\n", config)
+	fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err)
