@@ -24,6 +24,10 @@ var pythonScript string
 func run(clientset *kubernetes.Clientset) error {
 	configMapUniqueName := "python-script-config"
 	// create configmap from pythonScript
+	// A ConfigMap is an API object used to store non-confidential data in key-value pairs.
+	// Pods can consume ConfigMaps as environment variables, command-line arguments, or
+	// as configuration files in a volume.
+	// https://kubernetes.io/docs/concepts/configuration/configmap/
 	// ```yaml
 	// apiVersion: v1
 	// kind: ConfigMap
@@ -51,6 +55,9 @@ func run(clientset *kubernetes.Clientset) error {
 	}
 
 	// create a deployment with the configMap
+	// A Deployment manages a set of Pods to run an application workload,
+	// usually one that doesn't maintain state.
+	// https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 	// ```yaml
 	// apiVersion: apps/v1
 	// kind: Deployment
