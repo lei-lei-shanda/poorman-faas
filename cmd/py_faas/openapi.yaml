@@ -1,0 +1,106 @@
+openapi: "3.0.0"
+info:
+  title: MCP Service API
+  description: API for handling file input and returning URLs
+  version: 1.0.0
+  contact:
+    name: MCP Service
+servers:
+  - url: http://localhost:8080
+    description: Development server
+paths:
+  /mcp-service:
+    post:
+      summary: Process file input
+      description: Accepts a file input and returns a URL on success or error details on failure
+      operationId: processFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to be processed
+              required:
+                - file
+      responses:
+        '200':
+          description: Successful processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: The generated URL
+                required:
+                  - url
+              example:
+                url: "https://example.com/processed-file-123"
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "INVALID_FILE"
+                error: "The provided file is invalid or corrupted"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "PROCESSING_ERROR"
+                error: "An internal error occurred while processing the file"
+components:
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: The generated URL
+      required:
+        - url
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        error:
+          type: string
+          description: Error message
+      required:
+        - code
+        - error
