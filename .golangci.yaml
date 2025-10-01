@@ -1,0 +1,31 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    # - revive
+    - ineffassign
+    - bodyclose
+    - dogsled
+    # too many
+    # - exhaustruct
+    - goconst
+    - gocritic
+    - goprintffuncname
+    # - lll
+    - nakedret
+    - noctx
+    - nolintlint
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+  settings:
+    staticcheck:
+      checks: ["all"]
