@@ -1,0 +1,448 @@
+openapi: "3.0.0"
+info:
+  title: MCP Service API
+  description: API for handling file input and returning URLs
+  version: 1.0.0
+  contact:
+    name: MCP Service
+servers:
+  - url: http://localhost:8080
+    description: Development server
+paths:
+  /mcp-service:
+    get:
+      summary: Get MCP services for a user
+      description: Retrieves all MCP services associated with a specific user
+      operationId: getUserMcpServices
+      parameters:
+        - name: user
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User identifier
+      responses:
+        '200':
+          description: Successful retrieval
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Service identifier
+                        url:
+                          type: string
+                          format: uri
+                          description: Service URL
+                        created_at:
+                          type: string
+                          format: date-time
+                          description: Creation timestamp
+                      required:
+                        - id
+                        - url
+                        - created_at
+                required:
+                  - services
+              example:
+                services:
+                  - id: "service-123"
+                    url: "https://example.com/service-123"
+                    created_at: "2024-01-15T10:30:00Z"
+                  - id: "service-456"
+                    url: "https://example.com/service-456"
+                    created_at: "2024-01-14T15:45:00Z"
+        '400':
+          description: Bad request - invalid user parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "INVALID_USER"
+                error: "Invalid user parameter provided"
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "USER_NOT_FOUND"
+                error: "User not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "RETRIEVAL_ERROR"
+                error: "An internal error occurred while retrieving services"
+    post:
+      summary: Process file input
+      description: Accepts a file input and returns a URL on success or error details on failure
+      operationId: processFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to be processed
+                user:
+                  type: string
+                  description: User identifier
+              required:
+                - file
+                - user
+      responses:
+        '200':
+          description: Successful processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: The generated URL
+                required:
+                  - url
+              example:
+                url: "https://example.com/processed-file-123"
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "INVALID_FILE"
+                error: "The provided file is invalid or corrupted"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    description: Error code
+                  error:
+                    type: string
+                    description: Error message
+                required:
+                  - code
+                  - error
+              example:
+                code: "PROCESSING_ERROR"
+                error: "An internal error occurred while processing the file"
+  /{service-uuid}/mcp:
+    get:
+      summary: Proxy GET request to underlying service
+      description: Forwards GET requests to the underlying MCP service
+      operationId: proxyGetRequest
+      parameters:
+        - name: service-uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Service UUID identifier
+      responses:
+        '200':
+          description: Successful proxy response
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Response from underlying service
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+        '201':
+          description: Created (from underlying service)
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Response from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+        '204':
+          description: No Content (from underlying service)
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "INVALID_SERVICE_UUID"
+                error: "Invalid service UUID format"
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_NOT_FOUND"
+                error: "Service not found"
+        '405':
+          description: Method not allowed (from underlying service)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "METHOD_NOT_ALLOWED"
+                error: "HTTP method not supported by underlying service"
+        '500':
+          description: Internal server error (from underlying service)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_ERROR"
+                error: "Internal error from underlying service"
+        '502':
+          description: Bad gateway - proxy error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "PROXY_ERROR"
+                error: "Error connecting to underlying service"
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_UNAVAILABLE"
+                error: "Underlying service is temporarily unavailable"
+        default:
+          description: Any other response from underlying service
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+    post:
+      summary: Proxy POST request to underlying service
+      description: Forwards POST requests to the underlying MCP service
+      operationId: proxyPostRequest
+      parameters:
+        - name: service-uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Service UUID identifier
+      requestBody:
+        description: Request body to forward to underlying service
+        content:
+          application/json:
+            schema:
+              type: object
+          multipart/form-data:
+            schema:
+              type: object
+          text/plain:
+            schema:
+              type: string
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          '*/*':
+            schema:
+              type: string
+      responses:
+        '200':
+          description: Successful proxy response
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Response from underlying service
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+        '201':
+          description: Created (from underlying service)
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Response from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+        '204':
+          description: No Content (from underlying service)
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "INVALID_SERVICE_UUID"
+                error: "Invalid service UUID format"
+        '404':
+          description: Service not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_NOT_FOUND"
+                error: "Service not found"
+        '405':
+          description: Method not allowed (from underlying service)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "METHOD_NOT_ALLOWED"
+                error: "HTTP method not supported by underlying service"
+        '500':
+          description: Internal server error (from underlying service)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_ERROR"
+                error: "Internal error from underlying service"
+        '502':
+          description: Bad gateway - proxy error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "PROXY_ERROR"
+                error: "Error connecting to underlying service"
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: "SERVICE_UNAVAILABLE"
+                error: "Underlying service is temporarily unavailable"
+        default:
+          description: Any other response from underlying service
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream from underlying service
+            '*/*':
+              schema:
+                type: string
+                description: Response from underlying service
+components:
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: The generated URL
+      required:
+        - url
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        error:
+          type: string
+          description: Error message
+      required:
+        - code
+        - error

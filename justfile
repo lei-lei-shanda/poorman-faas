@@ -5,9 +5,14 @@ set dotenv-path := "{{justfile_directory()}}/.env"
 default:
 	@just --list
 
+[group('codegen')]
+codegen:
+	cd {{justfile_directory()}}/cmd/py_faas && go tool oapi-codegen -config oapi-codegen-config.yaml oapi-spec.yaml
+
+
 # build the named services
 [group('build')]
-build binary:
+build binary: codegen
 	go build -o {{justfile_directory()}}/bin/"{{binary}}" {{justfile_directory()}}/cmd/"{{binary}}"
 	chmod +x {{justfile_directory()}}/bin/"{{binary}}"
 
