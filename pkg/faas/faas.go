@@ -11,15 +11,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
 )
 
-// PythonFaas represents a Python Function as a Service (Faas) to be deployed on a k8s cluster.
+// PythonFaas hydrates various k8s resources via template. These resources represent a Python Function as a Service (Faas).
+//
+// These resources are:
+//   - configmap [PythonFaas.ConfigMap]
+//   - deployment [PythonFaas.Deployment]
+//   - service [PythonFaas.Service]
+//
+// One can then deploy it with [PythonFaas.Deploy] and [PythonFaas.Teardown].
+// Or Dump them with [PythonFaas.ToYAML].
 type PythonFaas struct {
 	// needed by selector
 	appName string
 	// needed by k8s
 	namespace string
-	// three kinds of k8s resources
+	// K8s resource UUID, should be RFC-1035 compliant:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#rfc-1035-label-names
 	configMapUUID  string
 	deploymentUUID string
 	serviceUUID    string
@@ -29,6 +39,7 @@ type PythonFaas struct {
 
 func New(script string) *PythonFaas {
 	uuid := uuid.New().String()
+	// TODO: name should be RFC-1035 compliant
 	appName := fmt.Sprintf("app-%s", uuid)
 	configMapUUID := fmt.Sprintf("configmap-%s", uuid)
 	deploymentUUID := fmt.Sprintf("deployment-%s", uuid)
@@ -178,4 +189,33 @@ func (s *PythonFaas) Teardown(ctx context.Context, clientset *kubernetes.Clients
 		return fmt.Errorf("configMapClient.Delete(): %w", err)
 	}
 	return nil
+}
+
+// ToYAML dumps the Python Faas as a single YAML string.
+//
+// one can then uses
+//
+//	```bash
+//	kubectl apply -f <yaml-string>
+//	```
+//
+// to apply the YAML to the k8s cluster.
+func (s *PythonFaas) ToYAML() (string, error) {
+	cm := s.ConfigMap()
+	deployment := s.Deployment()
+	service := s.Service()
+	cmYaml, err := yaml.Marshal(cm)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(cm): %w", err)
+	}
+	deploymentYaml, err := yaml.Marshal(deployment)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(deployment): %w", err)
+	}
+	serviceYaml, err := yaml.Marshal(service)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(service): %w", err)
+	}
+	// concat all yaml with triple dash to separate them
+	return fmt.Sprintf("%s---\n%s---\n%s", string(cmYaml), string(deploymentYaml), string(serviceYaml)), nil
 }
