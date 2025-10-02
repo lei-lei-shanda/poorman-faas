@@ -1,5 +1,4 @@
-// Package main checks that a given python script is PEP 723 compliant.
-package main
+package faas
 
 import (
 	_ "embed"
@@ -93,20 +92,20 @@ func NewMetadata(script string) (Metadata, error) {
 	return schema, nil
 }
 
-func checkPEP723(script string) error {
-	// check that the script is PEP 723 compliant
-	// PEP 723: https://peps.python.org/pep-0723/
-	// PEP 723 is a standard for writing Python scripts that are compliant with the Python language specification.
+// func checkPEP723(script string) error {
+// 	// check that the script is PEP 723 compliant
+// 	// PEP 723: https://peps.python.org/pep-0723/
+// 	// PEP 723 is a standard for writing Python scripts that are compliant with the Python language specification.
 
-	// Try to read the script block
-	schema, err := NewMetadata(script)
-	fmt.Printf("Schema: %#v\n", schema)
-	if err != nil {
-		return fmt.Errorf("failed to read metadata: %w", err)
-	}
-	if !schema.Validate() {
-		return fmt.Errorf("schema is not valid")
-	}
+// 	// Try to read the script block
+// 	schema, err := NewMetadata(script)
+// 	fmt.Printf("Schema: %#v\n", schema)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to read metadata: %w", err)
+// 	}
+// 	if !schema.Validate() {
+// 		return fmt.Errorf("schema is not valid")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }

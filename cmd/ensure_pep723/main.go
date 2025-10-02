@@ -72,13 +72,12 @@ func read(script string) (Schema, error) {
 
 	var cleanedLines []string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "# ") {
-			// Remove "# " prefix
+		switch {
+		case strings.HasPrefix(line, "# "):
 			cleanedLines = append(cleanedLines, line[2:])
-		} else if strings.HasPrefix(line, "#") {
-			// Remove "#" prefix
+		case strings.HasPrefix(line, "#"):
 			cleanedLines = append(cleanedLines, line[1:])
-		} else {
+		default:
 			cleanedLines = append(cleanedLines, line)
 		}
 	}
