@@ -11,9 +11,9 @@ servers:
 paths:
   /mcp-service:
     get:
-      summary: Get MCP services for a user
+      summary: List MCP services for a user
       description: Retrieves all MCP services associated with a specific user
-      operationId: getUserMcpServices
+      operationId: listMCPService
       parameters:
         - name: user
           in: query
@@ -23,7 +23,7 @@ paths:
           description: User identifier
       responses:
         '200':
-          description: Successful retrieval
+          description: Successful list
           content:
             application/json:
               schema:
@@ -36,15 +36,15 @@ paths:
                       properties:
                         id:
                           type: string
-                          description: Service identifier
+                          description: MCP service identifier
                         url:
                           type: string
                           format: uri
-                          description: Service URL
+                          description: MCP service URL
                         created_at:
                           type: string
                           format: date-time
-                          description: Creation timestamp
+                          description: Creation timestamp for the MCP service
                       required:
                         - id
                         - url
@@ -60,7 +60,7 @@ paths:
                     url: "https://example.com/service-456"
                     created_at: "2024-01-14T15:45:00Z"
         '400':
-          description: Bad request - invalid user parameter
+          description: Bad request - invalid user identifier
           content:
             application/json:
               schema:
@@ -77,9 +77,9 @@ paths:
                   - error
               example:
                 code: "INVALID_USER"
-                error: "Invalid user parameter provided"
+                error: "Invalid user identifier provided"
         '404':
-          description: User not found
+          description: MCP service not found
           content:
             application/json:
               schema:
@@ -95,8 +95,8 @@ paths:
                   - code
                   - error
               example:
-                code: "USER_NOT_FOUND"
-                error: "User not found"
+                code: "MCP_SERVICE_NOT_FOUND"
+                error: "MCP service not found"
         '500':
           description: Internal server error
           content:
@@ -114,12 +114,12 @@ paths:
                   - code
                   - error
               example:
-                code: "RETRIEVAL_ERROR"
-                error: "An internal error occurred while retrieving services"
+                code: "LIST_ERROR"
+                error: "An internal error occurred while listing MCP services"
     post:
-      summary: Process file input
-      description: Accepts a file input and returns a URL on success or error details on failure
-      operationId: processFile
+      summary: Create MCP service
+      description: Accepts a PEP 723 compliant Python script and returns a URL on success or error details on failure
+      operationId: createMCPService
       requestBody:
         required: true
         content:
@@ -130,7 +130,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: The file to be processed
+                  description: a PEP 723 compliant Python script, which will be used to create the MCP service
                 user:
                   type: string
                   description: User identifier
@@ -139,7 +139,7 @@ paths:
                 - user
       responses:
         '200':
-          description: Successful processing
+          description: Successful creation
           content:
             application/json:
               schema:
@@ -148,13 +148,13 @@ paths:
                   url:
                     type: string
                     format: uri
-                    description: The generated URL
+                    description: The generated URL for the MCP service
                 required:
                   - url
               example:
-                url: "https://example.com/processed-file-123"
+                url: "https://example.com/mcp-service-123"
         '400':
-          description: Bad request - invalid input
+          description: Bad request - invalid PEP 723 compliant Python script
           content:
             application/json:
               schema:
@@ -170,7 +170,7 @@ paths:
                   - code
                   - error
               example:
-                code: "INVALID_FILE"
+                code: "INVALID_PEP_723"
                 error: "The provided file is invalid or corrupted"
         '500':
           description: Internal server error
@@ -189,13 +189,13 @@ paths:
                   - code
                   - error
               example:
-                code: "PROCESSING_ERROR"
-                error: "An internal error occurred while processing the file"
+                code: "CREATE_ERROR"
+                error: "An internal error occurred while creating the MCP service"
   /{service-uuid}/mcp:
     get:
       summary: Proxy GET request to underlying service
       description: Forwards GET requests to the underlying MCP service
-      operationId: proxyGetRequest
+      operationId: proxyGetMCP
       parameters:
         - name: service-uuid
           in: path
@@ -203,36 +203,36 @@ paths:
           schema:
             type: string
             format: uuid
-          description: Service UUID identifier
+          description: MCP service UUID identifier
       responses:
         '200':
-          description: Successful proxy response
+          description: Successful proxy GET response
           content:
             application/json:
               schema:
                 type: object
-                description: Response from underlying service
+                description: Response from underlying MCP service
             text/event-stream:
               schema:
                 type: string
-                description: Server-Sent Events stream from underlying service
+                description: Server-Sent Events stream from underlying MCP service
             '*/*':
               schema:
                 type: string
-                description: Response from underlying service
+                description: Response from underlying MCP service
         '201':
-          description: Created (from underlying service)
+          description: Created (from underlying MCP service)
           content:
             application/json:
               schema:
                 type: object
-                description: Response from underlying service
+                description: Response from underlying MCP service
             '*/*':
               schema:
                 type: string
-                description: Response from underlying service
+                description: Response from underlying MCP service
         '204':
-          description: No Content (from underlying service)
+          description: No Content (from underlying MCP service)
         '400':
           description: Bad request
           content:
@@ -240,68 +240,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                code: "INVALID_SERVICE_UUID"
+                code: "INVALID_MCP_SERVICE_UUID"
                 error: "Invalid service UUID format"
         '404':
-          description: Service not found
+          description: MCP service not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                code: "SERVICE_NOT_FOUND"
-                error: "Service not found"
+                code: "MCP_SERVICE_NOT_FOUND"
+                error: "MCP service not found"
         '405':
-          description: Method not allowed (from underlying service)
+          description: Method not allowed (from underlying MCP service)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 code: "METHOD_NOT_ALLOWED"
-                error: "HTTP method not supported by underlying service"
+                error: "HTTP method not supported by underlying MCP service"
         '500':
-          description: Internal server error (from underlying service)
+          description: Internal server error (from underlying MCP service)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 code: "SERVICE_ERROR"
-                error: "Internal error from underlying service"
+                error: "Internal error from underlying MCP service"
         '502':
-          description: Bad gateway - proxy error
+          description: Bad gateway - proxy MCP error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                code: "PROXY_ERROR"
-                error: "Error connecting to underlying service"
+                code: "PROXY_MCP_ERROR"
+                error: "Error connecting to underlying MCP service"
         '503':
-          description: Service unavailable
+          description: MCP service unavailable
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                code: "SERVICE_UNAVAILABLE"
+                code: "MCP_SERVICE_UNAVAILABLE"
                 error: "Underlying service is temporarily unavailable"
         default:
-          description: Any other response from underlying service
+          description: Any other response from underlying MCP service
           content:
             text/event-stream:
               schema:
                 type: string
-                description: Server-Sent Events stream from underlying service
+                description: Server-Sent Events stream from underlying MCP service
             '*/*':
               schema:
                 type: string
-                description: Response from underlying service
+                description: Response from underlying MCP service
     post:
       summary: Proxy POST request to underlying service
       description: Forwards POST requests to the underlying MCP service
-      operationId: proxyPostRequest
+      operationId: proxyPostMCP
       parameters:
         - name: service-uuid
           in: path
