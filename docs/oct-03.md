@@ -1,6 +1,6 @@
 # Some thoughts
 
-> Do we use OpenAPI codegen or not?
+> Should we use OpenAPI codegen or not?
 
 Learning towards Yes, but there are some issues.
 
@@ -54,7 +54,7 @@ Problems with them:
 2. for (C), the path value `{service-uuid}` is explicit in the server signature, make it incompatible with `net.Handler`
 3. client code for proxy is not needed.
 
-> Do we use form submission?
+> Should we use form submission over json body for file upload?
 
 Now leaning towards No. Rather `POST json-body` over `POST form-data`, because:
 1. can read code from other sources, i.e. github gist, s3 buckets etc. this makes sharing slightly easy.
@@ -74,7 +74,7 @@ A few options:
 	2. via ConfigMap: build a custom image that loads entry point script with ConfigMap
 	3. via mounted volume: ???
 
-We currently went with option 2 (with ConfigMap), with the following drawbacks:
+We currently went with option 2 (with `ConfigMap`), with the following drawbacks:
 - No multiple files, or zip archive. Just a single python script. (we additionally requires `PEP-723` compliance)
 - No additional dependencies. `uv` may install some on node startup, this maybe an issue, so a dedicated image with lots of dependencies may be needed.
 - service is stateless. This is true for no, but may not be true in the future.
@@ -86,24 +86,39 @@ In the future, we lean towards option 1 or 4, where we accept a container image 
 > How to expose Faas to outside of K8s?
 
 A few options (as I am aware of currently):
-1. Directly. 
-	1. On Deployment of Faas, creates a Service of `LoadBalancer` kind, and then 
-	2. (optional) modify the cluster Ingress kind to route traffic to it.
-	3. return `{faas-ip}` to user.
-2. Through a gateway. 
-	1. On bootstrap, create a dedicated deployment for `gateway` and expose it via Ingress.
-	2. On deployment of faas, create a service of `ClusterIP` or `NodePort` kind.
-	3. (optional) use DNS addon to let `gateway` dicover it?
-	4. return `{gateway-ip}/api/{fass-uuid}` to user.
+1. Directly Via Ingress. 
+	1. On Deployment of Faas, creates `ClusterIP` kind service, and then 
+	2. modify the cluster `Ingress` to route traffic to it via `/{svc-uuid}` route.
+	3. return `{ingress-ip}/{svc-uuid}` to user.
+	4. route all request `https://{ingress-ip}/{svc-uuid}/*` to `http://{svc-uuid}.{ns}.svc.cluster.local/*`.
+2. Through another service say `gateway`.
+	1. On bootstrap, create a dedicated deployment for `gateway`.
+	2. This service `gateway` is externally exposed via `LoadBalancer` kind service.
+	3. On deployment of faas, create a `ClusterIP` kind service.
+	4. use DNS addon to let `gateway` dicover it.
+	5. return `{lb-ip}/api/{svc-uuid}` to user.
+	6. route all request `https://{lb-ip}/api/{sv-uuid}/*` to `http://{svc-uuid}.{ns}.svc.cluster.local/*`.
 
 Leaning towards option 2 (gateway) because:
 1. recycling a service is easy. Add a middleware to monitor last access time, and periodically reclaim them. Otherwise we copy `miro-sandbox` approach, modify pod annotation every time it is been accessed.
 2. Adding observability is easy. Again, just add a middleware. Otherwise we need to use sidecar pattern to enhance each Faas pod.
+3. Not sure how frequent updating `Ingress` spec will affect cluster.
 
-> Gateway inside or outside k8s cluster?
+> gateway inside or outside k8s cluster?
 
 Considering k8s cluster has its own DNS and etc, it **has to be** inside the same k8s cluster that spawns Faas pods.
 
 the more interesting question is how to update this gateway service, when code changes.
 1. If the gateway service stateless, can just replace it.
 2. No need to tear down the entire cluster, just update this single deployment + service.
+
+> how gateway can discover newly spawned faas service?
+
+use DNS. suupose pod performing DNS lookup want to find service:
+
+| URL | comment |
+|---|---|
+| `<service-name>` | service and pod in the same namespace|
+| `<service-name>.<service-namespace>` | pod from any namespace |
+| `<service-name>.<service-namespace>.svc` |  pod from any namespace |
+| `<service-name>.<service-namespace>.svc.cluster.local` | pod from any namespace |
