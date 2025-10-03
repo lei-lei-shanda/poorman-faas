@@ -1,4 +1,4 @@
-// Package faas provides a Python Faas to be deployed on a k8s cluster.
+// Package faas templates various k8s resouces to deploy a Python Function as a Service (Faas).
 package faas
 
 import (
@@ -22,7 +22,7 @@ import (
 //   - service [PythonFaas.Service]
 //
 // One can then deploy it with [PythonFaas.Deploy] and [PythonFaas.Teardown].
-// Or Dump them with [PythonFaas.ToYAML].
+// Or Dump them with [PythonFaas.ToYAML] and apply them with `kubectl apply -f <yaml-string>`.
 type PythonFaas struct {
 	// needed by selector
 	appName string
@@ -37,23 +37,33 @@ type PythonFaas struct {
 	script string
 }
 
-func New(script string) *PythonFaas {
+func New(script string) (PythonFaas, error) {
 	uuid := uuid.New().String()
 	// TODO: name should be RFC-1035 compliant
 	appName := fmt.Sprintf("app-%s", uuid)
 	configMapUUID := fmt.Sprintf("configmap-%s", uuid)
 	deploymentUUID := fmt.Sprintf("deployment-%s", uuid)
 	serviceUUID := fmt.Sprintf("service-%s", uuid)
-	return &PythonFaas{
+
+	schema, err := NewMetadata(script)
+	if err != nil {
+		return PythonFaas{}, fmt.Errorf("NewMetadata(): %w", err)
+	}
+
+	if !schema.Validate() {
+		return PythonFaas{}, fmt.Errorf("script is not PEP 723 compliant")
+	}
+
+	return PythonFaas{
 		appName:        appName,
 		configMapUUID:  configMapUUID,
 		deploymentUUID: deploymentUUID,
 		serviceUUID:    serviceUUID,
 		script:         script,
-	}
+	}, nil
 }
 
-func (s *PythonFaas) Selector() map[string]string {
+func (s PythonFaas) Selector() map[string]string {
 	return map[string]string{
 		"app": s.appName,
 	}
@@ -65,7 +75,7 @@ func (s *PythonFaas) Selector() map[string]string {
 // Pods can consume ConfigMaps as environment variables, command-line arguments, or
 // as configuration files in a volume. For more, see:
 // https://kubernetes.io/docs/concepts/configuration/configmap/
-func (s *PythonFaas) ConfigMap() *apiv1.ConfigMap {
+func (s PythonFaas) ConfigMap() *apiv1.ConfigMap {
 	return &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.configMapUUID,
@@ -79,7 +89,7 @@ func (s *PythonFaas) ConfigMap() *apiv1.ConfigMap {
 // A Deployment manages a set of Pods to run an application workload,
 // usually one that doesn't maintain state. For more, see:
 // https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
-func (s *PythonFaas) Deployment() *appsv1.Deployment {
+func (s PythonFaas) Deployment() *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.deploymentUUID,
@@ -127,7 +137,7 @@ func (s *PythonFaas) Deployment() *appsv1.Deployment {
 // A Service is a method for exposing a network application
 // that is running as one or more Pods in your cluster.
 // https://kubernetes.io/docs/concepts/services-networking/service/
-func (s *PythonFaas) Service() *apiv1.Service {
+func (s PythonFaas) Service() *apiv1.Service {
 	return &apiv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.serviceUUID,
@@ -148,7 +158,7 @@ func (s *PythonFaas) Service() *apiv1.Service {
 // Deploy creates the Python Faas on the k8s cluster.
 //
 // creates in order: configmap -> deployment -> service
-func (s *PythonFaas) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
+func (s PythonFaas) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
 	ns := s.namespace
 	configMapClient := clientset.CoreV1().ConfigMaps(ns)
 	_, err := configMapClient.Create(ctx, s.ConfigMap(), metav1.CreateOptions{})
