@@ -1,0 +1,140 @@
+// Package main is what gets deployed to the cloud platform.
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"poorman-faas/pkg/helm"
+	"poorman-faas/pkg/proxy"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
+)
+
+type UploadOption struct {
+	User    string `json:"user"`
+	Replica int    `json:"replica"`
+}
+
+type UploadRequest struct {
+	Script string       `json:"script"`
+	Option UploadOption `json:"option"`
+}
+
+type UploadResponse struct {
+	URL     string `json:"url"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.HandlerFunc {
+
+	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(UploadResponse{
+			Code:    statusCode,
+			Message: err.Error(),
+		})
+	}
+
+	hanlder := func(w http.ResponseWriter, r *http.Request) {
+		var req UploadRequest
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// create a helm chart
+		chart, err := helm.NewChart(k8sNamespace, req.Script)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		// deploy the chart
+		err = chart.Deploy(r.Context(), client)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, err)
+			// TODO: running `defer chart.Teardown(r.Context(), client)` in the background
+			return
+		}
+
+		// TODO: wait until service is ready
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(UploadResponse{
+			URL:     fmt.Sprintf("http://%s.%s.svc.cluster.local", chart.Service().Name, chart.Namespace),
+			Code:    http.StatusOK,
+			Message: "success",
+		})
+	}
+	return hanlder
+}
+
+func run(client *kubernetes.Clientset) error {
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	{
+		admin := chi.NewRouter()
+
+		// because this creates k8s resource, we are extra careful.
+		// for example, see e2b create sandbox rate limit at 5/second.
+		admin.Use(httprate.LimitByIP(10, time.Minute))
+		admin.Post("/python", getUploadHandler("faas", client))
+		r.Mount("/admin", admin)
+	}
+	{
+		gateway := chi.NewRouter()
+		namespace := "faas"
+		pathPrefix := "/gateway"
+		getServiceName := func(r *http.Request) string {
+			// return r.PathValue("svcName")
+			return chi.URLParam(r, "svcName")
+		}
+		rp, err := proxy.New(
+			proxy.WithTransport(proxy.ProxyTransport()),
+			proxy.WithRewrites(proxy.RewriteURL(pathPrefix, namespace, getServiceName)),
+		)
+		if err != nil {
+			return fmt.Errorf("proxy.New(): %w", err)
+		}
+		gateway.Handle("/{svcName}/*", rp)
+		r.Mount(pathPrefix, gateway)
+	}
+	return nil
+}
+
+func main() {
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err)
+	}
+
+	// fmt.Printf("Kubeconfig: %#v\n", config)
+	fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+	err = run(clientset)
+	if err != nil {
+		panic(err)
+	}
+}

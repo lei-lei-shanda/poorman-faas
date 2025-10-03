@@ -1,5 +1,7 @@
-// Package faas templates various k8s resouces to deploy a Python Function as a Service (Faas).
-package faas
+// Package helm templates various k8s resouces to deploy a Python Function as a Service (Faas).
+//
+// This works similiarly like kustomize or helm tools.
+package helm
 
 import (
 	"context"
@@ -14,20 +16,21 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// PythonFaas hydrates various k8s resources via template. These resources represent a Python Function as a Service (Faas).
+// Chart hydrates various k8s resources via template.
+// These resources represent a Python Function as a Service (Faas), like a helm chart.
 //
 // These resources are:
-//   - configmap [PythonFaas.ConfigMap]
-//   - deployment [PythonFaas.Deployment]
-//   - service [PythonFaas.Service]
+//   - configmap [Chart.ConfigMap]
+//   - deployment [Chart.Deployment]
+//   - service [Chart.Service]
 //
-// One can then deploy it with [PythonFaas.Deploy] and [PythonFaas.Teardown].
-// Or Dump them with [PythonFaas.ToYAML] and apply them with `kubectl apply -f <yaml-string>`.
-type PythonFaas struct {
+// One can then deploy it with [Chart.Deploy] and [Chart.Teardown].
+// Or Dump them with [Chart.ToYAML] and apply them with `kubectl apply -f <yaml-string>`.
+type Chart struct {
 	// needed by selector
 	appName string
 	// needed by k8s
-	namespace string
+	Namespace string
 	// K8s resource UUID, should be RFC-1035 compliant:
 	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#rfc-1035-label-names
 	configMapUUID  string
@@ -37,7 +40,7 @@ type PythonFaas struct {
 	script string
 }
 
-func New(script string) (PythonFaas, error) {
+func NewChart(namespace string, script string) (Chart, error) {
 	uuid := uuid.New().String()
 	// TODO: name should be RFC-1035 compliant
 	appName := fmt.Sprintf("app-%s", uuid)
@@ -47,15 +50,16 @@ func New(script string) (PythonFaas, error) {
 
 	schema, err := NewMetadata(script)
 	if err != nil {
-		return PythonFaas{}, fmt.Errorf("NewMetadata(): %w", err)
+		return Chart{}, fmt.Errorf("NewMetadata(): %w", err)
 	}
 
 	if !schema.Validate() {
-		return PythonFaas{}, fmt.Errorf("script is not PEP 723 compliant")
+		return Chart{}, fmt.Errorf("script is not PEP 723 compliant")
 	}
 
-	return PythonFaas{
+	return Chart{
 		appName:        appName,
+		Namespace:      namespace,
 		configMapUUID:  configMapUUID,
 		deploymentUUID: deploymentUUID,
 		serviceUUID:    serviceUUID,
@@ -63,7 +67,7 @@ func New(script string) (PythonFaas, error) {
 	}, nil
 }
 
-func (s PythonFaas) Selector() map[string]string {
+func (s Chart) Selector() map[string]string {
 	return map[string]string{
 		"app": s.appName,
 	}
@@ -75,7 +79,7 @@ func (s PythonFaas) Selector() map[string]string {
 // Pods can consume ConfigMaps as environment variables, command-line arguments, or
 // as configuration files in a volume. For more, see:
 // https://kubernetes.io/docs/concepts/configuration/configmap/
-func (s PythonFaas) ConfigMap() *apiv1.ConfigMap {
+func (s Chart) ConfigMap() *apiv1.ConfigMap {
 	return &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.configMapUUID,
@@ -89,7 +93,7 @@ func (s PythonFaas) ConfigMap() *apiv1.ConfigMap {
 // A Deployment manages a set of Pods to run an application workload,
 // usually one that doesn't maintain state. For more, see:
 // https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
-func (s PythonFaas) Deployment() *appsv1.Deployment {
+func (s Chart) Deployment() *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.deploymentUUID,
@@ -137,7 +141,7 @@ func (s PythonFaas) Deployment() *appsv1.Deployment {
 // A Service is a method for exposing a network application
 // that is running as one or more Pods in your cluster.
 // https://kubernetes.io/docs/concepts/services-networking/service/
-func (s PythonFaas) Service() *apiv1.Service {
+func (s Chart) Service() *apiv1.Service {
 	return &apiv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.serviceUUID,
@@ -158,8 +162,8 @@ func (s PythonFaas) Service() *apiv1.Service {
 // Deploy creates the Python Faas on the k8s cluster.
 //
 // creates in order: configmap -> deployment -> service
-func (s PythonFaas) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
-	ns := s.namespace
+func (s Chart) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
+	ns := s.Namespace
 	configMapClient := clientset.CoreV1().ConfigMaps(ns)
 	_, err := configMapClient.Create(ctx, s.ConfigMap(), metav1.CreateOptions{})
 	if err != nil {
@@ -181,8 +185,8 @@ func (s PythonFaas) Deploy(ctx context.Context, clientset *kubernetes.Clientset)
 // Teardown removes the Python Faas from the k8s cluster.
 //
 // destroys in reverse order: service -> deployment -> configmap
-func (s *PythonFaas) Teardown(ctx context.Context, clientset *kubernetes.Clientset) error {
-	ns := s.namespace
+func (s *Chart) Teardown(ctx context.Context, clientset *kubernetes.Clientset) error {
+	ns := s.Namespace
 	serviceClient := clientset.CoreV1().Services(ns)
 	err := serviceClient.Delete(ctx, s.serviceUUID, metav1.DeleteOptions{})
 	if err != nil {
@@ -210,7 +214,7 @@ func (s *PythonFaas) Teardown(ctx context.Context, clientset *kubernetes.Clients
 //	```
 //
 // to apply the YAML to the k8s cluster.
-func (s *PythonFaas) ToYAML() (string, error) {
+func (s *Chart) ToYAML() (string, error) {
 	cm := s.ConfigMap()
 	deployment := s.Deployment()
 	service := s.Service()

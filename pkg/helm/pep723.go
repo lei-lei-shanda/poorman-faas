@@ -1,4 +1,4 @@
-package faas
+package helm
 
 import (
 	_ "embed"
