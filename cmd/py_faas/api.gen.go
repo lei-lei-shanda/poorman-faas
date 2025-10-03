@@ -21,83 +21,83 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// GetUserMcpServicesParams defines parameters for GetUserMcpServices.
-type GetUserMcpServicesParams struct {
+// ListMCPServiceParams defines parameters for ListMCPService.
+type ListMCPServiceParams struct {
 	// User User identifier
 	User string `form:"user" json:"user"`
 }
 
-// ProcessFileMultipartBody defines parameters for ProcessFile.
-type ProcessFileMultipartBody struct {
-	// File The file to be processed
+// CreateMCPServiceMultipartBody defines parameters for CreateMCPService.
+type CreateMCPServiceMultipartBody struct {
+	// File a PEP 723 compliant Python script, which will be used to create the MCP service
 	File openapi_types.File `json:"file"`
 
 	// User User identifier
 	User string `json:"user"`
 }
 
-// ProxyPostRequestJSONBody defines parameters for ProxyPostRequest.
-type ProxyPostRequestJSONBody = map[string]interface{}
+// ProxyPostMCPJSONBody defines parameters for ProxyPostMCP.
+type ProxyPostMCPJSONBody = map[string]interface{}
 
-// ProxyPostRequestMultipartBody defines parameters for ProxyPostRequest.
-type ProxyPostRequestMultipartBody = map[string]interface{}
+// ProxyPostMCPMultipartBody defines parameters for ProxyPostMCP.
+type ProxyPostMCPMultipartBody = map[string]interface{}
 
-// ProxyPostRequestTextBody defines parameters for ProxyPostRequest.
-type ProxyPostRequestTextBody = string
+// ProxyPostMCPTextBody defines parameters for ProxyPostMCP.
+type ProxyPostMCPTextBody = string
 
-// ProcessFileMultipartRequestBody defines body for ProcessFile for multipart/form-data ContentType.
-type ProcessFileMultipartRequestBody ProcessFileMultipartBody
+// CreateMCPServiceMultipartRequestBody defines body for CreateMCPService for multipart/form-data ContentType.
+type CreateMCPServiceMultipartRequestBody CreateMCPServiceMultipartBody
 
-// ProxyPostRequestJSONRequestBody defines body for ProxyPostRequest for application/json ContentType.
-type ProxyPostRequestJSONRequestBody = ProxyPostRequestJSONBody
+// ProxyPostMCPJSONRequestBody defines body for ProxyPostMCP for application/json ContentType.
+type ProxyPostMCPJSONRequestBody = ProxyPostMCPJSONBody
 
-// ProxyPostRequestMultipartRequestBody defines body for ProxyPostRequest for multipart/form-data ContentType.
-type ProxyPostRequestMultipartRequestBody = ProxyPostRequestMultipartBody
+// ProxyPostMCPMultipartRequestBody defines body for ProxyPostMCP for multipart/form-data ContentType.
+type ProxyPostMCPMultipartRequestBody = ProxyPostMCPMultipartBody
 
-// ProxyPostRequestTextRequestBody defines body for ProxyPostRequest for text/plain ContentType.
-type ProxyPostRequestTextRequestBody = ProxyPostRequestTextBody
+// ProxyPostMCPTextRequestBody defines body for ProxyPostMCP for text/plain ContentType.
+type ProxyPostMCPTextRequestBody = ProxyPostMCPTextBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Get MCP services for a user
+	// List MCP services for a user
 	// (GET /mcp-service)
-	GetUserMcpServices(w http.ResponseWriter, r *http.Request, params GetUserMcpServicesParams)
-	// Process file input
+	ListMCPService(w http.ResponseWriter, r *http.Request, params ListMCPServiceParams)
+	// Create MCP service
 	// (POST /mcp-service)
-	ProcessFile(w http.ResponseWriter, r *http.Request)
+	CreateMCPService(w http.ResponseWriter, r *http.Request)
 	// Proxy GET request to underlying service
 	// (GET /{service-uuid}/mcp)
-	ProxyGetRequest(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID)
+	ProxyGetMCP(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID)
 	// Proxy POST request to underlying service
 	// (POST /{service-uuid}/mcp)
-	ProxyPostRequest(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID)
+	ProxyPostMCP(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// Get MCP services for a user
+// List MCP services for a user
 // (GET /mcp-service)
-func (_ Unimplemented) GetUserMcpServices(w http.ResponseWriter, r *http.Request, params GetUserMcpServicesParams) {
+func (_ Unimplemented) ListMCPService(w http.ResponseWriter, r *http.Request, params ListMCPServiceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Process file input
+// Create MCP service
 // (POST /mcp-service)
-func (_ Unimplemented) ProcessFile(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) CreateMCPService(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Proxy GET request to underlying service
 // (GET /{service-uuid}/mcp)
-func (_ Unimplemented) ProxyGetRequest(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID) {
+func (_ Unimplemented) ProxyGetMCP(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Proxy POST request to underlying service
 // (POST /{service-uuid}/mcp)
-func (_ Unimplemented) ProxyPostRequest(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID) {
+func (_ Unimplemented) ProxyPostMCP(w http.ResponseWriter, r *http.Request, serviceUUID openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -110,13 +110,13 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// GetUserMcpServices operation middleware
-func (siw *ServerInterfaceWrapper) GetUserMcpServices(w http.ResponseWriter, r *http.Request) {
+// ListMCPService operation middleware
+func (siw *ServerInterfaceWrapper) ListMCPService(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetUserMcpServicesParams
+	var params ListMCPServiceParams
 
 	// ------------- Required query parameter "user" -------------
 
@@ -134,7 +134,7 @@ func (siw *ServerInterfaceWrapper) GetUserMcpServices(w http.ResponseWriter, r *
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetUserMcpServices(w, r, params)
+		siw.Handler.ListMCPService(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -144,11 +144,11 @@ func (siw *ServerInterfaceWrapper) GetUserMcpServices(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// ProcessFile operation middleware
-func (siw *ServerInterfaceWrapper) ProcessFile(w http.ResponseWriter, r *http.Request) {
+// CreateMCPService operation middleware
+func (siw *ServerInterfaceWrapper) CreateMCPService(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ProcessFile(w, r)
+		siw.Handler.CreateMCPService(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -158,8 +158,8 @@ func (siw *ServerInterfaceWrapper) ProcessFile(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// ProxyGetRequest operation middleware
-func (siw *ServerInterfaceWrapper) ProxyGetRequest(w http.ResponseWriter, r *http.Request) {
+// ProxyGetMCP operation middleware
+func (siw *ServerInterfaceWrapper) ProxyGetMCP(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -173,7 +173,7 @@ func (siw *ServerInterfaceWrapper) ProxyGetRequest(w http.ResponseWriter, r *htt
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ProxyGetRequest(w, r, serviceUUID)
+		siw.Handler.ProxyGetMCP(w, r, serviceUUID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -183,8 +183,8 @@ func (siw *ServerInterfaceWrapper) ProxyGetRequest(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// ProxyPostRequest operation middleware
-func (siw *ServerInterfaceWrapper) ProxyPostRequest(w http.ResponseWriter, r *http.Request) {
+// ProxyPostMCP operation middleware
+func (siw *ServerInterfaceWrapper) ProxyPostMCP(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -198,7 +198,7 @@ func (siw *ServerInterfaceWrapper) ProxyPostRequest(w http.ResponseWriter, r *ht
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ProxyPostRequest(w, r, serviceUUID)
+		siw.Handler.ProxyPostMCP(w, r, serviceUUID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -322,16 +322,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/mcp-service", wrapper.GetUserMcpServices)
+		r.Get(options.BaseURL+"/mcp-service", wrapper.ListMCPService)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/mcp-service", wrapper.ProcessFile)
+		r.Post(options.BaseURL+"/mcp-service", wrapper.CreateMCPService)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/{service-uuid}/mcp", wrapper.ProxyGetRequest)
+		r.Get(options.BaseURL+"/{service-uuid}/mcp", wrapper.ProxyGetMCP)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/{service-uuid}/mcp", wrapper.ProxyPostRequest)
+		r.Post(options.BaseURL+"/{service-uuid}/mcp", wrapper.ProxyPostMCP)
 	})
 
 	return r

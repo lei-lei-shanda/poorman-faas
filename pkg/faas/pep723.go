@@ -1,5 +1,4 @@
-// Package main checks that a given python script is PEP 723 compliant.
-package main
+package faas
 
 import (
 	_ "embed"
@@ -10,39 +9,36 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-//go:embed echo.py
-var pythonScript string
-
-// Schema represents the expected requirements for a Python script, according to PEP 723
-type Schema struct {
+// Metadata represents the expected requirements for a Python script, according to PEP 723
+type Metadata struct {
 	RequiresPython string   `toml:"requires-python"`
 	Dependencies   []string `toml:"dependencies"`
 }
 
 // Validate checks if the script is PEP 723 compliant
-func (schema Schema) Validate() bool {
+func (schema Metadata) Validate() bool {
 	return schema.ensurePY312() && schema.ensureDeps()
 }
 
-func (schema Schema) ensurePY312() bool {
+func (schema Metadata) ensurePY312() bool {
 	// TODO: support `==3.12.4`, `>=3.11` too.
 	return schema.RequiresPython == ">=3.12"
 }
 
-func (schema Schema) ensureDeps() bool {
+func (schema Metadata) ensureDeps() bool {
 	// TODO: check all packages exists
 	return true
 }
 
-// read extracts and parses PEP 723 script blocks from a Python script
-func read(script string) (Schema, error) {
+// NewMetadata extracts and parses PEP 723 script blocks from a Python script
+func NewMetadata(script string) (Metadata, error) {
 	// Regex pattern to match PEP 723 script blocks
 	// Matches: # /// script\n...content...\n# ///
 	regexPattern := `(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| .*)$\s)+)^# ///$`
 
 	re, err := regexp.Compile(regexPattern)
 	if err != nil {
-		return Schema{}, fmt.Errorf("failed to compile regex: %w", err)
+		return Metadata{}, fmt.Errorf("failed to compile regex: %w", err)
 	}
 
 	// Find all matches
@@ -58,12 +54,12 @@ func read(script string) (Schema, error) {
 
 	// Check for multiple script blocks
 	if len(scriptMatches) > 1 {
-		return Schema{}, fmt.Errorf("multiple script blocks found")
+		return Metadata{}, fmt.Errorf("multiple script blocks found")
 	}
 
 	// If no script block found, return nil
 	if len(scriptMatches) == 0 {
-		return Schema{}, nil
+		return Metadata{}, nil
 	}
 
 	// Extract and clean the content
@@ -72,12 +68,13 @@ func read(script string) (Schema, error) {
 
 	var cleanedLines []string
 	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "# "):
+		if strings.HasPrefix(line, "# ") {
+			// Remove "# " prefix
 			cleanedLines = append(cleanedLines, line[2:])
-		case strings.HasPrefix(line, "#"):
+		} else if strings.HasPrefix(line, "#") {
+			// Remove "#" prefix
 			cleanedLines = append(cleanedLines, line[1:])
-		default:
+		} else {
 			cleanedLines = append(cleanedLines, line)
 		}
 	}
@@ -86,37 +83,29 @@ func read(script string) (Schema, error) {
 	cleanedContent := strings.Join(cleanedLines, "\n")
 
 	// Parse TOML content
-	var schema Schema
+	var schema Metadata
 	err = toml.Unmarshal([]byte(cleanedContent), &schema)
 	if err != nil {
-		return Schema{}, fmt.Errorf("failed to parse TOML: %w", err)
+		return Metadata{}, fmt.Errorf("failed to parse TOML: %w", err)
 	}
 
 	return schema, nil
 }
 
-func checkPEP723(script string) (bool, error) {
-	// check that the script is PEP 723 compliant
-	// PEP 723: https://peps.python.org/pep-0723/
-	// PEP 723 is a standard for writing Python scripts that are compliant with the Python language specification.
+// func checkPEP723(script string) error {
+// 	// check that the script is PEP 723 compliant
+// 	// PEP 723: https://peps.python.org/pep-0723/
+// 	// PEP 723 is a standard for writing Python scripts that are compliant with the Python language specification.
 
-	// Try to read the script block
-	schema, err := read(script)
-	fmt.Printf("Schema: %#v\n", schema)
-	if err != nil {
-		return false, err
-	}
-	if !schema.Validate() {
-		return false, fmt.Errorf("schema is not valid")
-	}
+// 	// Try to read the script block
+// 	schema, err := NewMetadata(script)
+// 	fmt.Printf("Schema: %#v\n", schema)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to read metadata: %w", err)
+// 	}
+// 	if !schema.Validate() {
+// 		return fmt.Errorf("schema is not valid")
+// 	}
 
-	return true, nil
-}
-
-func main() {
-	ok, err := checkPEP723(pythonScript)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("PEP 723 compliant: %t\n", ok)
-}
+// 	return nil
+// }

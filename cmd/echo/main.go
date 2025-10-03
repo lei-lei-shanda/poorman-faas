@@ -102,6 +102,7 @@ func run(clientset *kubernetes.Clientset) error {
 						Name:    "python-container",
 						Image:   "ghcr.io/astral-sh/uv:python3.12-alpine",
 						Command: []string{"uv", "run", "--script", "/scripts/main.py"},
+						// https://kubernetes.io/docs/tutorials/services/connect-applications-service/#exposing-pods-to-the-cluster
 						Ports: []apiv1.ContainerPort{{
 							ContainerPort: 8000,
 							Protocol:      apiv1.ProtocolTCP,

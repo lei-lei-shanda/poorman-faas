@@ -1,0 +1,231 @@
+// Package faas templates various k8s resouces to deploy a Python Function as a Service (Faas).
+package faas
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	appsv1 "k8s.io/api/apps/v1"
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
+)
+
+// PythonFaas hydrates various k8s resources via template. These resources represent a Python Function as a Service (Faas).
+//
+// These resources are:
+//   - configmap [PythonFaas.ConfigMap]
+//   - deployment [PythonFaas.Deployment]
+//   - service [PythonFaas.Service]
+//
+// One can then deploy it with [PythonFaas.Deploy] and [PythonFaas.Teardown].
+// Or Dump them with [PythonFaas.ToYAML] and apply them with `kubectl apply -f <yaml-string>`.
+type PythonFaas struct {
+	// needed by selector
+	appName string
+	// needed by k8s
+	namespace string
+	// K8s resource UUID, should be RFC-1035 compliant:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#rfc-1035-label-names
+	configMapUUID  string
+	deploymentUUID string
+	serviceUUID    string
+	// user supplied python script
+	script string
+}
+
+func New(script string) (PythonFaas, error) {
+	uuid := uuid.New().String()
+	// TODO: name should be RFC-1035 compliant
+	appName := fmt.Sprintf("app-%s", uuid)
+	configMapUUID := fmt.Sprintf("configmap-%s", uuid)
+	deploymentUUID := fmt.Sprintf("deployment-%s", uuid)
+	serviceUUID := fmt.Sprintf("service-%s", uuid)
+
+	schema, err := NewMetadata(script)
+	if err != nil {
+		return PythonFaas{}, fmt.Errorf("NewMetadata(): %w", err)
+	}
+
+	if !schema.Validate() {
+		return PythonFaas{}, fmt.Errorf("script is not PEP 723 compliant")
+	}
+
+	return PythonFaas{
+		appName:        appName,
+		configMapUUID:  configMapUUID,
+		deploymentUUID: deploymentUUID,
+		serviceUUID:    serviceUUID,
+		script:         script,
+	}, nil
+}
+
+func (s PythonFaas) Selector() map[string]string {
+	return map[string]string{
+		"app": s.appName,
+	}
+}
+
+// ConfigMap returns a ConfigMap object that contains the Python script.
+//
+// A ConfigMap is an API object used to store non-confidential data in key-value pairs.
+// Pods can consume ConfigMaps as environment variables, command-line arguments, or
+// as configuration files in a volume. For more, see:
+// https://kubernetes.io/docs/concepts/configuration/configmap/
+func (s PythonFaas) ConfigMap() *apiv1.ConfigMap {
+	return &apiv1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.configMapUUID,
+		},
+		Data: map[string]string{"main.py": s.script},
+	}
+}
+
+// Deployment returns a Deployment object that contains the Python script.
+//
+// A Deployment manages a set of Pods to run an application workload,
+// usually one that doesn't maintain state. For more, see:
+// https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+func (s PythonFaas) Deployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.deploymentUUID,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: s.Selector(),
+			},
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: s.Selector(),
+				},
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{{
+						Name:    s.appName,
+						Image:   "ghcr.io/astral-sh/uv:python3.12-alpine",
+						Command: []string{"uv", "run", "--script", "/scripts/main.py"},
+						Ports: []apiv1.ContainerPort{{
+							ContainerPort: 8000,
+							Protocol:      apiv1.ProtocolTCP,
+						}},
+						VolumeMounts: []apiv1.VolumeMount{{
+							Name:      "script-volume",
+							MountPath: "/scripts",
+						}},
+					}},
+					Volumes: []apiv1.Volume{{
+						Name: "script-volume",
+						VolumeSource: apiv1.VolumeSource{
+							ConfigMap: &apiv1.ConfigMapVolumeSource{
+								LocalObjectReference: apiv1.LocalObjectReference{
+									Name: s.configMapUUID,
+								},
+							},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+// Service returns a Service object that exposes the Python Faas.
+//
+// A Service is a method for exposing a network application
+// that is running as one or more Pods in your cluster.
+// https://kubernetes.io/docs/concepts/services-networking/service/
+func (s PythonFaas) Service() *apiv1.Service {
+	return &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.serviceUUID,
+		},
+		Spec: apiv1.ServiceSpec{
+			// https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
+			Type:     apiv1.ServiceTypeClusterIP,
+			Selector: s.Selector(),
+			Ports: []apiv1.ServicePort{{
+				Port:       80,
+				Protocol:   apiv1.ProtocolTCP,
+				TargetPort: intstr.FromInt(8000),
+			}},
+		},
+	}
+}
+
+// Deploy creates the Python Faas on the k8s cluster.
+//
+// creates in order: configmap -> deployment -> service
+func (s PythonFaas) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
+	ns := s.namespace
+	configMapClient := clientset.CoreV1().ConfigMaps(ns)
+	_, err := configMapClient.Create(ctx, s.ConfigMap(), metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("configMapClient.Create(): %w", err)
+	}
+	deploymentClient := clientset.AppsV1().Deployments(ns)
+	_, err = deploymentClient.Create(ctx, s.Deployment(), metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("deploymentClient.Create(): %w", err)
+	}
+	serviceClient := clientset.CoreV1().Services(ns)
+	_, err = serviceClient.Create(ctx, s.Service(), metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("serviceClient.Create(): %w", err)
+	}
+	return nil
+}
+
+// Teardown removes the Python Faas from the k8s cluster.
+//
+// destroys in reverse order: service -> deployment -> configmap
+func (s *PythonFaas) Teardown(ctx context.Context, clientset *kubernetes.Clientset) error {
+	ns := s.namespace
+	serviceClient := clientset.CoreV1().Services(ns)
+	err := serviceClient.Delete(ctx, s.serviceUUID, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("serviceClient.Delete(): %w", err)
+	}
+	deploymentClient := clientset.AppsV1().Deployments(ns)
+	err = deploymentClient.Delete(ctx, s.deploymentUUID, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("deploymentClient.Delete(): %w", err)
+	}
+	configMapClient := clientset.CoreV1().ConfigMaps(ns)
+	err = configMapClient.Delete(ctx, s.configMapUUID, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("configMapClient.Delete(): %w", err)
+	}
+	return nil
+}
+
+// ToYAML dumps the Python Faas as a single YAML string.
+//
+// one can then uses
+//
+//	```bash
+//	kubectl apply -f <yaml-string>
+//	```
+//
+// to apply the YAML to the k8s cluster.
+func (s *PythonFaas) ToYAML() (string, error) {
+	cm := s.ConfigMap()
+	deployment := s.Deployment()
+	service := s.Service()
+	cmYaml, err := yaml.Marshal(cm)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(cm): %w", err)
+	}
+	deploymentYaml, err := yaml.Marshal(deployment)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(deployment): %w", err)
+	}
+	serviceYaml, err := yaml.Marshal(service)
+	if err != nil {
+		return "", fmt.Errorf("yaml.Marshal(service): %w", err)
+	}
+	// concat all yaml with triple dash to separate them
+	return fmt.Sprintf("%s---\n%s---\n%s", string(cmYaml), string(deploymentYaml), string(serviceYaml)), nil
+}
