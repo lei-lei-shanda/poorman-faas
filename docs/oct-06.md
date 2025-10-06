@@ -67,3 +67,5 @@ actual result (from echo-service pod log):
 app-8c8e00fc-f913-4536-8106-557aa3b954ad  | INFO:     10.244.0.23:34336 - "POST /gateway/service-8c8e00fc-f913-4536-8106-557aa3b954ad/echo/ HTTP/1.1" 404 Not Found
 ```
 
+reason: leading slash not present in `r.URL.path`. Fixed.
+
