@@ -107,7 +107,10 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		}
 		rp, err := proxy.New(
 			proxy.WithTransport(proxy.ProxyTransport()),
-			proxy.WithRewrites(proxy.RewriteURL(pathPrefix, namespace, getServiceName)),
+			proxy.WithRewrites(
+				proxy.RewriteURL(pathPrefix, namespace, getServiceName),
+				proxy.DebugRequest(logger),
+			),
 		)
 		if err != nil {
 			return fmt.Errorf("proxy.New(): %w", err)
