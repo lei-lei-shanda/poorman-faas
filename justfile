@@ -29,3 +29,24 @@ lint:
 [group('test')]
 dev binary: (build binary)
 	{{justfile_directory()}}/bin/"{{binary}}"
+
+# build containerimage
+[group('deploy')]
+build-faas:
+	podman build -t faas-gateway-app:latest -f {{justfile_directory()}}/cmd/faas/Dockerfile {{justfile_directory()}}
+
+# deploy service to k8s cluster
+[group('deploy')]
+deploy-faas:
+	# kubectl apply -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml
+	kubectl apply -f {{justfile_directory()}}/hack/secret.yaml
+	kubectl apply -f {{justfile_directory()}}/hack/deployment.yaml
+	kubectl apply -f {{justfile_directory()}}/hack/service.yaml
+
+# remove service from k8s cluster
+[group('deploy')]
+remove-faas:
+	kubectl delete -f {{justfile_directory()}}/hack/service.yaml
+	kubectl delete -f {{justfile_directory()}}/hack/deployment.yaml
+	kubectl delete -f {{justfile_directory()}}/hack/secret.yaml
+	# kubectl delete -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml
