@@ -5,15 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -21,8 +20,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/rest"
 )
 
 type UploadOption struct {
@@ -150,17 +148,12 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 }
 
 func main() {
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	port, error := strconv.Atoi(os.Getenv("PORT"))
+	if error != nil {
+		panic(error)
 	}
-	var port int
-	flag.IntVar(&port, "port", 8080, "port to listen on")
-	flag.Parse()
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err)
 	}

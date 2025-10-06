@@ -15,6 +15,7 @@ spec:
       labels:
         app: faas-gateway
     spec:
+      serviceAccountName: faas-gateway-sa
       containers:
       - name: faas-gateway
         # only use local image
