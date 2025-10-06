@@ -85,7 +85,10 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	r := chi.NewRouter()
-	r.Use(httplog.RequestLogger(logger, nil))
+	r.Use(httplog.RequestLogger(logger, &httplog.Options{
+		Schema: httplog.SchemaECS,
+		Level:  slog.LevelDebug,
+	}))
 	// admin routes: this creates faas service.
 	{
 		admin := chi.NewRouter()
