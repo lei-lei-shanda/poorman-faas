@@ -33,6 +33,8 @@ bash hack/faas-health-check.sh
 2025/10/06 07:32:57 "GET http://10.89.0.7:8080/health HTTP/1.1" from 10.244.0.1:6069 - 404 19B in 107.001µs
 ```
 
+updated: problem fixed, because the image name/tag remained the same between different build, the code does not gets deployed.
+
 > What is Container image "localhost/faas-gateway-app:latest" is not present error?
 
 - This is because kind cluster does not have access to `docker image`.
@@ -49,3 +51,21 @@ podman build -t faas-gateway-app:latest -f {{justfile_directory()}}/cmd/faas/Doc
 # see https://kind.sigs.k8s.io/docs/user/quick-start/#loading-an-image-into-your-cluster
 kind load docker-image localhost/faas-gateway-app:latest --name $(kind get clusters)
 ```
+
+> why request to uploaded code is not responding?
+
+setup:
+- `faas-gateway` service is up and running (check with `bash test/health-check.sh`)
+- we upload `test/echo-web-server.py` to the cluster (with `bash test/upload-code.sh`)
+- we test the service with `bash test/check-code.sh`
+
+expected result:
+- HTTP 200 with right response
+
+actual result (from echo-service pod log):
+```shell
+app-8c8e00fc-f913-4536-8106-557aa3b954ad  | INFO:     10.244.0.23:34336 - "POST /gateway/service-8c8e00fc-f913-4536-8106-557aa3b954ad/echo/ HTTP/1.1" 404 Not Found
+```
+
+reason: leading slash not present in `r.URL.path`. Fixed.
+

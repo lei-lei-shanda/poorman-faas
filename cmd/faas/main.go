@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/httprate"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -85,7 +85,7 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	r.Use(httplog.RequestLogger(logger, nil))
 	// admin routes: this creates faas service.
 	{
 		admin := chi.NewRouter()
@@ -100,20 +100,22 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 	{
 		gateway := chi.NewRouter()
 		namespace := "faas"
-		pathPrefix := "/gateway"
 		getServiceName := func(r *http.Request) string {
 			// return r.PathValue("svcName")
 			return chi.URLParam(r, "svcName")
 		}
 		rp, err := proxy.New(
 			proxy.WithTransport(proxy.ProxyTransport()),
-			proxy.WithRewrites(proxy.RewriteURL(pathPrefix, namespace, getServiceName)),
+			proxy.WithRewrites(
+				proxy.RewriteURL("gateway", namespace, getServiceName),
+				proxy.DebugRequest(logger),
+			),
 		)
 		if err != nil {
 			return fmt.Errorf("proxy.New(): %w", err)
 		}
 		gateway.Handle("/{svcName}/*", rp)
-		r.Mount(pathPrefix, gateway)
+		r.Mount("/gateway", gateway)
 	}
 	// add health check route
 	{
@@ -176,7 +178,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	err = run(ctx, logger, port, clientset)
 	if err != nil {
 		panic(err)
