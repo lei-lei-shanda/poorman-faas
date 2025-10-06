@@ -23,6 +23,16 @@ Tried:
     - example service worked (using `default` namespace).
     - does not work with `faas-gateway` yet.
 
+
+```shell
+# run the health check a few times
+bash hack/faas-health-check.sh
+# logs from the service
+2025/10/06 07:03:23 "GET http://10.89.0.7:8080/health HTTP/1.1" from 10.244.0.1:1071 - 404 19B in 2.123919ms
+2025/10/06 07:15:44 "GET http://10.89.0.7:8080/health HTTP/1.1" from 10.244.0.1:8010 - 404 19B in 419.293µs
+2025/10/06 07:32:57 "GET http://10.89.0.7:8080/health HTTP/1.1" from 10.244.0.1:6069 - 404 19B in 107.001µs
+```
+
 > What is Container image "localhost/faas-gateway-app:latest" is not present error?
 
 - This is because kind cluster does not have access to `docker image`.

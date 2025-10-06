@@ -39,10 +39,8 @@ build-faas:
 # deploy service to k8s cluster
 [group('deploy')]
 deploy-faas: build-faas
-	# kubectl apply -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/namespace.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/rbac.yaml
-	# kubectl apply -f {{justfile_directory()}}/hack/secret.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/deployment.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/service.yaml
 
@@ -52,5 +50,4 @@ deploy-faas: build-faas
 remove-faas:
 	kubectl delete -f {{justfile_directory()}}/hack/service.yaml
 	kubectl delete -f {{justfile_directory()}}/hack/deployment.yaml
-	# kubectl delete -f {{justfile_directory()}}/hack/secret.yaml
-	# kubectl delete -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml
+	kubectl delete -f {{justfile_directory()}}/hack/namespace.yaml
