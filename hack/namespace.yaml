@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: faas
+  labels:
+    environment: dev
+    app.kubernetes.io/name: faas
+    owner: devops-team
+  annotations:
+    description: "Namespace for Function as a Service"

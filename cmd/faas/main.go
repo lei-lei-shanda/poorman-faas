@@ -2,13 +2,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -79,7 +85,7 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 	return hanlder
 }
 
-func run(client *kubernetes.Clientset) error {
+func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	{
@@ -109,6 +115,37 @@ func run(client *kubernetes.Clientset) error {
 		gateway.Handle("/{svcName}/*", rp)
 		r.Mount(pathPrefix, gateway)
 	}
+
+	// Single server listening on port 8080
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: r,
+	}
+
+	// Start the single server
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Server failed", "error", err)
+			return
+		}
+	}()
+
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+	logger.Info("Received shutdown signal, shutting down server...")
+
+	// Create a context with a timeout for graceful shutdown
+	shutdownCtx := context.Background()
+	shutdownCtx, shutdownCancel := context.WithTimeout(shutdownCtx, 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Error shutting down server", "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -119,6 +156,8 @@ func main() {
 	} else {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
+	var port int
+	flag.IntVar(&port, "port", 8080, "port to listen on")
 	flag.Parse()
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
@@ -133,7 +172,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = run(clientset)
+
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	err = run(ctx, logger, port, clientset)
 	if err != nil {
 		panic(err)
 	}
