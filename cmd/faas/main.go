@@ -2,21 +2,25 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"flag"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
-	"path/filepath"
+	"os"
+	"os/signal"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
+	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/rest"
 )
 
 type UploadOption struct {
@@ -79,9 +83,10 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 	return hanlder
 }
 
-func run(client *kubernetes.Clientset) error {
+func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
+	// admin routes: this creates faas service.
 	{
 		admin := chi.NewRouter()
 
@@ -91,6 +96,7 @@ func run(client *kubernetes.Clientset) error {
 		admin.Post("/python", getUploadHandler("faas", client))
 		r.Mount("/admin", admin)
 	}
+	// gateway routes: this proxies to the faas service.
 	{
 		gateway := chi.NewRouter()
 		namespace := "faas"
@@ -109,31 +115,69 @@ func run(client *kubernetes.Clientset) error {
 		gateway.Handle("/{svcName}/*", rp)
 		r.Mount(pathPrefix, gateway)
 	}
+	// add health check route
+	{
+		r.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+		}))
+	}
+
+	// Single server listening on port 8080
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: r,
+	}
+
+	// Start the single server
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("Server failed", "error", err)
+			return
+		}
+	}()
+
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+	logger.Info("Received shutdown signal, shutting down server...")
+
+	// Create a context with a timeout for graceful shutdown
+	shutdownCtx := context.Background()
+	shutdownCtx, shutdownCancel := context.WithTimeout(shutdownCtx, 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Error shutting down server", "error", err)
+		return err
+	}
 	return nil
 }
 
 func main() {
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	port, error := strconv.Atoi(os.Getenv("PORT"))
+	if error != nil {
+		panic(error)
 	}
-	flag.Parse()
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	// fmt.Printf("Kubeconfig: %#v\n", config)
-	fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
+	fmt.Printf("Kubeconfig: %#v\n", config)
+	// fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err)
 	}
-	err = run(clientset)
+
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	err = run(ctx, logger, port, clientset)
 	if err != nil {
 		panic(err)
 	}
