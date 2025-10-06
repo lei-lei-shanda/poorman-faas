@@ -34,14 +34,15 @@ dev binary: (build binary)
 [group('deploy')]
 build-faas:
 	podman build -t faas-gateway-app:latest -f {{justfile_directory()}}/cmd/faas/Dockerfile {{justfile_directory()}}
+	kind load docker-image localhost/faas-gateway-app:latest --name $(kind get clusters)
 
 # deploy service to k8s cluster
 [group('deploy')]
-deploy-faas:
+deploy-faas: build-faas
 	# kubectl apply -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/namespace.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/rbac.yaml
-	kubectl apply -f {{justfile_directory()}}/hack/secret.yaml
+	# kubectl apply -f {{justfile_directory()}}/hack/secret.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/deployment.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/service.yaml
 
@@ -51,5 +52,5 @@ deploy-faas:
 remove-faas:
 	kubectl delete -f {{justfile_directory()}}/hack/service.yaml
 	kubectl delete -f {{justfile_directory()}}/hack/deployment.yaml
-	kubectl delete -f {{justfile_directory()}}/hack/secret.yaml
+	# kubectl delete -f {{justfile_directory()}}/hack/secret.yaml
 	# kubectl delete -f {{justfile_directory()}}/cmd/faas/k8s-namespace.yaml

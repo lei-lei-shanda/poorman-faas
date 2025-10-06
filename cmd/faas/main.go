@@ -86,6 +86,7 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
+	// admin routes: this creates faas service.
 	{
 		admin := chi.NewRouter()
 
@@ -95,6 +96,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		admin.Post("/python", getUploadHandler("faas", client))
 		r.Mount("/admin", admin)
 	}
+	// gateway routes: this proxies to the faas service.
 	{
 		gateway := chi.NewRouter()
 		namespace := "faas"
@@ -112,6 +114,13 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		}
 		gateway.Handle("/{svcName}/*", rp)
 		r.Mount(pathPrefix, gateway)
+	}
+	// add health check route
+	{
+		r.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+		}))
 	}
 
 	// Single server listening on port 8080

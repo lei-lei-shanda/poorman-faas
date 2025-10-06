@@ -47,5 +47,5 @@ COPY --from=builder /bin/${BINARY} /app/${BINARY}
 USER app
 
 # Default command can be overridden at runtime
-ENTRYPOINT ["/app/${BINARY}"]
+ENTRYPOINT ["/app/faas"]
 # To run other binaries, override at runtime with: docker run ... /app/<binary>

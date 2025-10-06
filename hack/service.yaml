@@ -11,5 +11,5 @@ spec:
     app: faas-gateway
   ports:
   - name: http
-    port: 80
+    port: 8080
     targetPort: http
