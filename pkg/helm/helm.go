@@ -82,7 +82,8 @@ func (s Chart) Selector() map[string]string {
 func (s Chart) ConfigMap() *apiv1.ConfigMap {
 	return &apiv1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: s.configMapUUID,
+			Namespace: s.Namespace,
+			Name:      s.configMapUUID,
 		},
 		Data: map[string]string{"main.py": s.script},
 	}
@@ -96,7 +97,8 @@ func (s Chart) ConfigMap() *apiv1.ConfigMap {
 func (s Chart) Deployment() *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: s.deploymentUUID,
+			Namespace: s.Namespace,
+			Name:      s.deploymentUUID,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -144,7 +146,8 @@ func (s Chart) Deployment() *appsv1.Deployment {
 func (s Chart) Service() *apiv1.Service {
 	return &apiv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: s.serviceUUID,
+			Namespace: s.Namespace,
+			Name:      s.serviceUUID,
 		},
 		Spec: apiv1.ServiceSpec{
 			// https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
@@ -165,6 +168,8 @@ func (s Chart) Service() *apiv1.Service {
 func (s Chart) Deploy(ctx context.Context, clientset *kubernetes.Clientset) error {
 	ns := s.Namespace
 	configMapClient := clientset.CoreV1().ConfigMaps(ns)
+	// TODO: use Apply instead of Create?
+	// _, err := configMapClient.Apply(ctx, s.ConfigMap(), metav1.ApplyOptions{})
 	_, err := configMapClient.Create(ctx, s.ConfigMap(), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("configMapClient.Create(): %w", err)
