@@ -7,7 +7,8 @@ default:
 
 [group('codegen')]
 codegen:
-	cd {{justfile_directory()}}/cmd/py_faas && go tool oapi-codegen -config oapi-codegen-config.yaml oapi-spec.yaml
+	echo "codegen is disabled"
+	# cd {{justfile_directory()}}/cmd/py_faas && go tool oapi-codegen -config oapi-codegen-config.yaml oapi-spec.yaml
 
 
 # build the named services
