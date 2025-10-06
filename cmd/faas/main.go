@@ -158,8 +158,8 @@ func main() {
 		panic(err)
 	}
 
-	// fmt.Printf("Kubeconfig: %#v\n", config)
-	fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
+	fmt.Printf("Kubeconfig: %#v\n", config)
+	// fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
