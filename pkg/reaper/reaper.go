@@ -29,8 +29,8 @@ type Reaper struct {
 	mapping map[string]Charter
 }
 
-// NewReaper creates a new Pruner with the given clientset and time to live.
-func NewReaper(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Reaper {
+// New creates a new Pruner with the given clientset and time to live.
+func New(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Reaper {
 	// TODO: iterate over all service in the namespace
 	p := Reaper{
 		clientset: clientset,

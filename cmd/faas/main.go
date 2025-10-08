@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
-	"poorman-faas/pkg/pruner"
+	pkg_reaper "poorman-faas/pkg/reaper"
 	"strconv"
 	"syscall"
 	"time"
@@ -40,7 +40,7 @@ type UploadResponse struct {
 	Message string `json:"message"`
 }
 
-func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubernetes.Clientset) http.HandlerFunc {
+func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *kubernetes.Clientset) http.HandlerFunc {
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
 		_ = json.NewEncoder(w).Encode(UploadResponse{
@@ -88,7 +88,7 @@ func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubern
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	// initialize the reaper
-	reaper := pruner.NewPruner(ctx, client, 10*time.Minute, logger)
+	reaper := pkg_reaper.New(ctx, client, 10*time.Minute, logger)
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
