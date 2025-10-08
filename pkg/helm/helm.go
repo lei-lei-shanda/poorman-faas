@@ -4,9 +4,10 @@
 package helm
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -39,13 +40,13 @@ type Chart struct {
 	deploymentUUID string
 	serviceUUID    string
 	// user supplied python script
-	script string
+	script []byte
 	// user supplied dot file
-	dotFile string
+	dotFile []byte
 	env     map[string]string
 }
 
-func NewChart(namespace string, script string, dotFile string) (Chart, error) {
+func NewChart(namespace string, scriptBase64 string, dotFileBase64 string) (Chart, error) {
 	uuid := uuid.New().String()
 	// TODO: name should be RFC-1035 compliant
 	appName := fmt.Sprintf("app-%s", uuid)
@@ -53,8 +54,20 @@ func NewChart(namespace string, script string, dotFile string) (Chart, error) {
 	deploymentUUID := fmt.Sprintf("deployment-%s", uuid)
 	serviceUUID := fmt.Sprintf("service-%s", uuid)
 
+	// decode base64 script
+	scriptBytes, err := base64.StdEncoding.DecodeString(scriptBase64)
+	if err != nil {
+		return Chart{}, fmt.Errorf("base64.DecodeString(script): %w", err)
+	}
+
+	// decode base64 dotFile
+	dotFileBytes, err := base64.StdEncoding.DecodeString(dotFileBase64)
+	if err != nil {
+		return Chart{}, fmt.Errorf("base64.DecodeString(dotFile): %w", err)
+	}
+
 	// validate PEP 723 metadata
-	schema, err := NewMetadata(script)
+	schema, err := NewMetadata(string(scriptBytes))
 	if err != nil {
 		return Chart{}, fmt.Errorf("NewMetadata(): %w", err)
 	}
@@ -64,7 +77,7 @@ func NewChart(namespace string, script string, dotFile string) (Chart, error) {
 	}
 
 	// validate dot file
-	env, err := godotenv.Parse(strings.NewReader(dotFile))
+	env, err := godotenv.Parse(bytes.NewReader(dotFileBytes))
 	if err != nil {
 		return Chart{}, fmt.Errorf("godotenv.Parse(): %w", err)
 	}
@@ -75,8 +88,8 @@ func NewChart(namespace string, script string, dotFile string) (Chart, error) {
 		configMapUUID:  configMapUUID,
 		deploymentUUID: deploymentUUID,
 		serviceUUID:    serviceUUID,
-		script:         script,
-		dotFile:        dotFile,
+		script:         scriptBytes,
+		dotFile:        dotFileBytes,
 		env:            env,
 	}, nil
 }
@@ -99,7 +112,7 @@ func (s Chart) ConfigMap() *apiv1.ConfigMap {
 			Namespace: s.Namespace,
 			Name:      s.configMapUUID,
 		},
-		Data: map[string]string{"main.py": s.script},
+		Data: map[string]string{"main.py": string(s.script)},
 	}
 }
 
