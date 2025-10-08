@@ -1,7 +1,6 @@
 // Package reaper culls k8s resources that are not needed anymore.
 //
 // This is similiar to Knative serving, that scales down to zero pods.
-// https://knative.dev/docs/serving/autoscaling/pruning/
 package reaper
 
 import (
@@ -19,7 +18,7 @@ type Charter interface {
 	Teardown(ctx context.Context, clientset *kubernetes.Clientset) error
 }
 
-// Reaper is a service that prunes resources that have expired.
+// Reaper culls resources that have expired by monitoring the last accessed time.
 type Reaper struct {
 	clientset *kubernetes.Clientset
 	expirer   Expirer
@@ -29,7 +28,7 @@ type Reaper struct {
 	mapping map[string]Charter
 }
 
-// New creates a new Pruner with the given clientset and time to live.
+// New creates a new Reaper with the given clientset and time to live.
 func New(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Reaper {
 	// TODO: iterate over all service in the namespace
 	p := Reaper{
@@ -44,7 +43,7 @@ func New(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.D
 	return &p
 }
 
-// Watch starts a background goroutine that prunes resources that have expired.
+// Watch starts a background goroutine that culls k8s resources that have expired.
 func (p *Reaper) Watch(ctx context.Context) {
 	// TODO: iterate over all services in the namespace to initialize the mapping
 	for {
