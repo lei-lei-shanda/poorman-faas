@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
+	"poorman-faas/pkg/pruner"
 	"strconv"
 	"syscall"
 	"time"
@@ -39,7 +40,7 @@ type UploadResponse struct {
 	Message string `json:"message"`
 }
 
-func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.HandlerFunc {
+func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubernetes.Clientset) http.HandlerFunc {
 
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
@@ -72,6 +73,9 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 			return
 		}
 
+		// update the reaper
+		reaper.MustRegister(r.Context(), chart.Service().Name, &chart)
+
 		// TODO: wait until service is ready
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(UploadResponse{
@@ -84,6 +88,9 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 }
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
+	// initialize the reaper
+	reaper := pruner.NewPruner(ctx, client, 10*time.Minute)
+
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
 	// admin routes: this creates faas service.
@@ -93,7 +100,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		// because this creates k8s resource, we are extra careful.
 		// for example, see e2b create sandbox rate limit at 5/second.
 		admin.Use(httprate.LimitByIP(10, time.Minute))
-		admin.Post("/python", getUploadHandler("faas", client))
+		admin.Post("/python", getUploadHandler("faas", reaper, client))
 		r.Mount("/admin", admin)
 	}
 	// gateway routes: this proxies to the faas service.
@@ -110,6 +117,11 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 				proxy.RewriteURL("gateway", namespace, getServiceName),
 				proxy.DebugRequest(logger),
 			),
+			proxy.WithModifyResponse(func(r *http.Response) error {
+				svcName := getServiceName(r.Request)
+				reaper.MustUpdate(r.Request.Context(), svcName)
+				return nil
+			}),
 		)
 		if err != nil {
 			return fmt.Errorf("proxy.New(): %w", err)
