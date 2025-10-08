@@ -41,10 +41,9 @@ type UploadResponse struct {
 }
 
 func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubernetes.Clientset) http.HandlerFunc {
-
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(UploadResponse{
+		_ = json.NewEncoder(w).Encode(UploadResponse{
 			Code:    statusCode,
 			Message: err.Error(),
 		})
@@ -78,7 +77,7 @@ func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubern
 
 		// TODO: wait until service is ready
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(UploadResponse{
+		_ = json.NewEncoder(w).Encode(UploadResponse{
 			URL:     fmt.Sprintf("http://%s.%s.svc.cluster.local", chart.Service().Name, chart.Namespace),
 			Code:    http.StatusOK,
 			Message: "success",
@@ -89,7 +88,7 @@ func getUploadHandler(k8sNamespace string, reaper *pruner.Pruner, client *kubern
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	// initialize the reaper
-	reaper := pruner.NewPruner(ctx, client, 10*time.Minute)
+	reaper := pruner.NewPruner(ctx, client, 10*time.Minute, logger)
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
@@ -133,7 +132,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 	{
 		r.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			_, _ = w.Write([]byte("ok"))
 		}))
 	}
 
