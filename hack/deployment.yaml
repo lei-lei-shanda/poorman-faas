@@ -25,8 +25,23 @@ spec:
         - name: http
           containerPort: 8080
         env:
+        # see .env.template for what is needed
+        - name: LOG_LEVEL
+          value: "debug"
+        - name: REAPER_POLL_EVERY
+          value: "10s"
+        - name: REAPER_TIME_TO_LIVE
+          value: "30s"
+        - name: K8S_NAMESPACE
+          value: "faas"
+        - name: K8S_LOAD_BALANCER_PORT
+          value: "8080"
         - name: PORT
           value: "8080"
+        - name: GATEWAY_PATH_PREFIX
+          value: "/gateway"
+        - name: GATEWAY_SERVICE_NAME
+          value: "faas-gateway"
         readinessProbe:
           tcpSocket:
             port: http

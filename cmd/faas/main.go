@@ -3,105 +3,24 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"poorman-faas/pkg/helm"
+	"poorman-faas/pkg"
 	"poorman-faas/pkg/proxy"
 	pkg_reaper "poorman-faas/pkg/reaper"
-	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/httprate"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
-type UploadOption struct {
-	User    string `json:"user"`
-	Replica int    `json:"replica"`
-}
-
-type UploadRequest struct {
-	Script string       `json:"script"`
-	Option UploadOption `json:"option"`
-}
-
-type UploadResponse struct {
-	URL     string `json:"url"`
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type Charter struct {
-	chart  *helm.Chart
-	client *kubernetes.Clientset
-}
-
-func (c *Charter) Teardown(ctx context.Context) error {
-	return c.chart.Teardown(ctx, c.client)
-}
-
-func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *kubernetes.Clientset) http.HandlerFunc {
-	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
-		w.WriteHeader(statusCode)
-		_ = json.NewEncoder(w).Encode(UploadResponse{
-			Code:    statusCode,
-			Message: err.Error(),
-		})
-	}
-
-	hanlder := func(w http.ResponseWriter, r *http.Request) {
-		var req UploadRequest
-
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// create a helm chart
-		chart, err := helm.NewChart(k8sNamespace, req.Script)
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		// deploy the chart
-		err = chart.Deploy(r.Context(), client)
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, err)
-			// TODO: running `defer chart.Teardown(r.Context(), client)` in the background
-			return
-		}
-
-		// wrap client with chart
-		charter := Charter{
-			chart:  &chart,
-			client: client,
-		}
-
-		// update the reaper
-		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
-
-		// TODO: wait until service is ready
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(UploadResponse{
-			URL:     fmt.Sprintf("http://%s.%s.svc.cluster.local", chart.Service().Name, chart.Namespace),
-			Code:    http.StatusOK,
-			Message: "success",
-		})
-	}
-	return hanlder
-}
-
-func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
+func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 	// initialize the reaper
 	// for debugging, we set a very short time to live and a very short poll every
 	reaper := pkg_reaper.New(ctx, 10*time.Second, 30*time.Second, logger)
@@ -115,13 +34,13 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		// because this creates k8s resource, we are extra careful.
 		// for example, see e2b create sandbox rate limit at 5/second.
 		admin.Use(httprate.LimitByIP(10, time.Minute))
-		admin.Post("/python", getUploadHandler("faas", reaper, client))
+		admin.Post("/python", getUploadHandler(cfg, reaper))
 		r.Mount("/admin", admin)
 	}
 	// gateway routes: this proxies to the faas service.
 	{
 		gateway := chi.NewRouter()
-		namespace := "faas"
+		namespace := cfg.K8sNamespace
 		getServiceName := func(r *http.Request) string {
 			// return r.PathValue("svcName")
 			return chi.URLParam(r, "svcName")
@@ -129,7 +48,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		rp, err := proxy.New(
 			proxy.WithTransport(proxy.ProxyTransport()),
 			proxy.WithRewrites(
-				proxy.RewriteURL("gateway", namespace, getServiceName),
+				proxy.RewriteURL(cfg.GatewayPathPrefix, namespace, getServiceName),
 				proxy.DebugRequest(logger),
 			),
 			proxy.WithModifyResponse(func(r *http.Response) error {
@@ -142,7 +61,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 			return fmt.Errorf("proxy.New(): %w", err)
 		}
 		gateway.Handle("/{svcName}/*", rp)
-		r.Mount("/gateway", gateway)
+		r.Mount(cfg.GatewayPathPrefix, gateway)
 	}
 	// add health check route
 	{
@@ -154,7 +73,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 
 	// Single server listening on port 8080
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: r,
 	}
 
@@ -186,27 +105,14 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 }
 
 func main() {
-	port, error := strconv.Atoi(os.Getenv("PORT"))
-	if error != nil {
-		panic(error)
-	}
-
-	config, err := rest.InClusterConfig()
+	config, err := pkg.GetConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("Kubeconfig: %#v\n", config)
-	// fmt.Printf("Kubernetes Cluster Host: %s\n", config.Host)
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err)
-	}
-
-	ctx := context.Background()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	err = run(ctx, logger, port, clientset)
+	ctx := context.Background()
+	err = run(ctx, config, logger)
 	if err != nil {
 		panic(err)
 	}
