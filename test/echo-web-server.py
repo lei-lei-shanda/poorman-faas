@@ -30,7 +30,7 @@ async def echo_message(data: EchoInput):
     """
     An echo service that returns the received message.
     """
-    return EchoOutput(received_message=data.messag, hidden_message=hidden_message)
+    return EchoOutput(received_message=data.message, hidden_message=hidden_message)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
