@@ -16,4 +16,4 @@ DOTFILE=$(cat test/echo-dotfile.ini | base64)
 # upload code
 curl -X POST "http://${LB_IP}:8080/admin/python" \
  -H "Content-Type: application/json" \
- -d "$(jq -n --arg script "$SCRIPT" --arg dotFile "$DOTFILE" '{"script": $script, "dotFile": $dotFile, "option": {"user": "frank", "replica": 1}}')"
+ -d "$(jq -n --arg script "$SCRIPT" --arg dotfile "$DOTFILE" '{"script": $script, "dot_file": $dotfile, "option": {"user": "frank", "replica": 1}}')"

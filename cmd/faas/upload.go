@@ -20,7 +20,7 @@ type UploadOption struct {
 
 type UploadRequest struct {
 	Script  string       `json:"script"`
-	DotFile string       `json:"dotFile"`
+	DotFile string       `json:"dot_file"`
 	Option  UploadOption `json:"option"`
 }
 
