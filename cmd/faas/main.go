@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/proxy"
+	pkg_reaper "poorman-faas/pkg/reaper"
 	"strconv"
 	"syscall"
 	"time"
@@ -39,11 +40,19 @@ type UploadResponse struct {
 	Message string `json:"message"`
 }
 
-func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.HandlerFunc {
+type Charter struct {
+	chart  *helm.Chart
+	client *kubernetes.Clientset
+}
 
+func (c *Charter) Teardown(ctx context.Context) error {
+	return c.chart.Teardown(ctx, c.client)
+}
+
+func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *kubernetes.Clientset) http.HandlerFunc {
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(UploadResponse{
+		_ = json.NewEncoder(w).Encode(UploadResponse{
 			Code:    statusCode,
 			Message: err.Error(),
 		})
@@ -72,9 +81,18 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 			return
 		}
 
+		// wrap client with chart
+		charter := Charter{
+			chart:  &chart,
+			client: client,
+		}
+
+		// update the reaper
+		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
+
 		// TODO: wait until service is ready
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(UploadResponse{
+		_ = json.NewEncoder(w).Encode(UploadResponse{
 			URL:     fmt.Sprintf("http://%s.%s.svc.cluster.local", chart.Service().Name, chart.Namespace),
 			Code:    http.StatusOK,
 			Message: "success",
@@ -84,6 +102,10 @@ func getUploadHandler(k8sNamespace string, client *kubernetes.Clientset) http.Ha
 }
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
+	// initialize the reaper
+	// for debugging, we set a very short time to live and a very short poll every
+	reaper := pkg_reaper.New(ctx, 10*time.Second, 30*time.Second, logger)
+
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
 	// admin routes: this creates faas service.
@@ -93,7 +115,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 		// because this creates k8s resource, we are extra careful.
 		// for example, see e2b create sandbox rate limit at 5/second.
 		admin.Use(httprate.LimitByIP(10, time.Minute))
-		admin.Post("/python", getUploadHandler("faas", client))
+		admin.Post("/python", getUploadHandler("faas", reaper, client))
 		r.Mount("/admin", admin)
 	}
 	// gateway routes: this proxies to the faas service.
@@ -110,6 +132,11 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 				proxy.RewriteURL("gateway", namespace, getServiceName),
 				proxy.DebugRequest(logger),
 			),
+			proxy.WithModifyResponse(func(r *http.Response) error {
+				svcName := getServiceName(r.Request)
+				reaper.MustUpdate(r.Request.Context(), svcName)
+				return nil
+			}),
 		)
 		if err != nil {
 			return fmt.Errorf("proxy.New(): %w", err)
@@ -121,7 +148,7 @@ func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.
 	{
 		r.Handle("/health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			_, _ = w.Write([]byte("ok"))
 		}))
 	}
 
