@@ -70,7 +70,7 @@ func (p *Reaper) MustRegister(ctx context.Context, service string, chart Charter
 
 	err := p.expirer.Update(ctx, service)
 	if err != nil {
-		p.logger.Error("pruner.MustRegister", "error", err, "service", service)
+		p.logger.Error("Reaper.MustRegister", "error", err, "service", service)
 		return
 	}
 }
@@ -79,11 +79,12 @@ func (p *Reaper) MustUpdate(ctx context.Context, service string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, exists := p.mapping[service]; !exists {
+		p.logger.Error("Reaper.mapping[service]", "error", fmt.Errorf("service %s not found", service), "service", service)
 		return
 	}
 	err := p.expirer.Update(ctx, service)
 	if err != nil {
-		p.logger.Error("pruner.MustUpdate", "error", err, "service", service)
+		p.logger.Error("Reaper.expirer.Update()", "error", err, "service", service)
 		return
 	}
 }
@@ -94,13 +95,13 @@ func (p *Reaper) MustCull(ctx context.Context, services []string) {
 	for _, service := range services {
 		chart, exists := p.mapping[service]
 		if !exists {
-			p.logger.Error("pruner.prune", "error", fmt.Errorf("service %s not found", service), "service", service)
+			p.logger.Error("Reaper.mapping[service]", "error", fmt.Errorf("service %s not found", service), "service", service)
 			continue
 		}
 
 		err := chart.Teardown(ctx, p.clientset)
 		if err != nil {
-			p.logger.Error("pruner.prune", "error", err, "service", service)
+			p.logger.Error("chart.Teardown()", "error", err, "service", service)
 			continue
 		}
 		delete(p.mapping, service)
