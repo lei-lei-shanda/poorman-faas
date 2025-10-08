@@ -17,10 +17,11 @@ type Expirer interface {
 
 // PQExpirer is an expirer that uses a priority queue to expire resources.
 type PQExpirer struct {
-	mu         sync.RWMutex
-	pq         priorityQueue
-	items      map[string]*item // uuid -> item mapping for O(1) lookup
 	TimeToLive time.Duration
+	// mutex for the items map and the pq
+	mu    sync.RWMutex
+	pq    priorityQueue
+	items map[string]*item // uuid -> item mapping for O(1) lookup
 }
 
 // NewPQExpirer creates a new PQExpirer with the given expiration time.

@@ -15,7 +15,7 @@ import (
 func RewriteURL(pathPrefix string, namespace string, getServiceName func(*http.Request) string) func(*httputil.ProxyRequest) {
 	return func(req *httputil.ProxyRequest) {
 		serviceName := getServiceName(req.In)
-		newPath := strings.TrimPrefix(req.In.URL.Path, fmt.Sprintf("/%s/%s", pathPrefix, serviceName))
+		newPath := strings.TrimPrefix(req.In.URL.Path, fmt.Sprintf("%s/%s", pathPrefix, serviceName))
 		newHost := fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
 
 		req.Out.URL = &url.URL{
