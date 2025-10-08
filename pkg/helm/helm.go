@@ -6,8 +6,10 @@ package helm
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,9 +40,12 @@ type Chart struct {
 	serviceUUID    string
 	// user supplied python script
 	script string
+	// user supplied dot file
+	dotFile string
+	env     map[string]string
 }
 
-func NewChart(namespace string, script string) (Chart, error) {
+func NewChart(namespace string, script string, dotFile string) (Chart, error) {
 	uuid := uuid.New().String()
 	// TODO: name should be RFC-1035 compliant
 	appName := fmt.Sprintf("app-%s", uuid)
@@ -48,6 +53,7 @@ func NewChart(namespace string, script string) (Chart, error) {
 	deploymentUUID := fmt.Sprintf("deployment-%s", uuid)
 	serviceUUID := fmt.Sprintf("service-%s", uuid)
 
+	// validate PEP 723 metadata
 	schema, err := NewMetadata(script)
 	if err != nil {
 		return Chart{}, fmt.Errorf("NewMetadata(): %w", err)
@@ -57,6 +63,12 @@ func NewChart(namespace string, script string) (Chart, error) {
 		return Chart{}, fmt.Errorf("script is not PEP 723 compliant")
 	}
 
+	// validate dot file
+	env, err := godotenv.Parse(strings.NewReader(dotFile))
+	if err != nil {
+		return Chart{}, fmt.Errorf("godotenv.Parse(): %w", err)
+	}
+
 	return Chart{
 		appName:        appName,
 		Namespace:      namespace,
@@ -64,6 +76,8 @@ func NewChart(namespace string, script string) (Chart, error) {
 		deploymentUUID: deploymentUUID,
 		serviceUUID:    serviceUUID,
 		script:         script,
+		dotFile:        dotFile,
+		env:            env,
 	}, nil
 }
 
@@ -95,6 +109,14 @@ func (s Chart) ConfigMap() *apiv1.ConfigMap {
 // usually one that doesn't maintain state. For more, see:
 // https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 func (s Chart) Deployment() *appsv1.Deployment {
+
+	envVars := make([]apiv1.EnvVar, 0, len(s.env))
+	for k, v := range s.env {
+		envVars = append(envVars, apiv1.EnvVar{
+			Name:  k,
+			Value: v,
+		})
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
@@ -117,6 +139,7 @@ func (s Chart) Deployment() *appsv1.Deployment {
 							ContainerPort: 8000,
 							Protocol:      apiv1.ProtocolTCP,
 						}},
+						Env: envVars,
 						VolumeMounts: []apiv1.VolumeMount{{
 							Name:      "script-volume",
 							MountPath: "/scripts",

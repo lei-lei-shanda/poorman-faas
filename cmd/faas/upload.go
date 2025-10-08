@@ -19,8 +19,9 @@ type UploadOption struct {
 }
 
 type UploadRequest struct {
-	Script string       `json:"script"`
-	Option UploadOption `json:"option"`
+	Script  string       `json:"script"`
+	DotFile string       `json:"dotFile"`
+	Option  UploadOption `json:"option"`
 }
 
 type UploadResponse struct {
@@ -53,13 +54,14 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 	hanlder := func(w http.ResponseWriter, r *http.Request) {
 		var req UploadRequest
 
+		// validate user request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("json.NewDecoder().Decode(): %w", err))
 			return
 		}
 
 		// create a helm chart
-		chart, err := helm.NewChart(k8sNamespace, req.Script)
+		chart, err := helm.NewChart(k8sNamespace, req.Script, req.DotFile)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("helm.NewChart(): %w", err))
 			return
