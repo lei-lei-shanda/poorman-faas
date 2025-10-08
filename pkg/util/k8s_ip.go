@@ -27,5 +27,9 @@ func K8sExternalDomainName(ctx context.Context, clientset *kubernetes.Clientset,
 
 	// TODO: use url.Parse to check
 	// TODO: already checked that service is read when creating helm.Chart
-	return fmt.Sprintf("https://%s:%d%s/%s", svc.Status.LoadBalancer.Ingress[0].IP, loadBalancerPort, gatewayPrefix, serviceName), nil
+	LoadBalancerIP := svc.Status.LoadBalancer.Ingress[0].IP
+	if LoadBalancerIP == "" || LoadBalancerIP == "<pending>" {
+		return "", fmt.Errorf("svc.Status.LoadBalancer.Ingress[0].IP is empty or pending")
+	}
+	return fmt.Sprintf("https://%s:%d%s/%s", LoadBalancerIP, loadBalancerPort, gatewayPrefix, serviceName), nil
 }
