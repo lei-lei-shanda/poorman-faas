@@ -40,6 +40,8 @@ spec:
           value: "8080"
         - name: GATEWAY_PATH_PREFIX
           value: "/gateway"
+        - name: GATEWAY_SERVICE_NAME
+          value: "faas-gateway"
         readinessProbe:
           tcpSocket:
             port: http
