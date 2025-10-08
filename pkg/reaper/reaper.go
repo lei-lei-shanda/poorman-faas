@@ -10,42 +10,39 @@ import (
 	"poorman-faas/pkg/util"
 	"sync"
 	"time"
-
-	"k8s.io/client-go/kubernetes"
 )
 
 type Charter interface {
-	Teardown(ctx context.Context, clientset *kubernetes.Clientset) error
+	Teardown(ctx context.Context) error
 }
 
 // Reaper culls resources that have expired by monitoring the last accessed time.
 type Reaper struct {
-	clientset *kubernetes.Clientset
-	expirer   Expirer
-	logger    *slog.Logger
+	expirer Expirer
+	logger  *slog.Logger
 	// mapping of UUID to Helm Chart
 	mu      sync.RWMutex
 	mapping map[string]Charter
 }
 
 // New creates a new Reaper with the given clientset and time to live.
-func New(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Reaper {
+func New(ctx context.Context, pollEvery time.Duration, timeToLive time.Duration, logger *slog.Logger) *Reaper {
 	// TODO: iterate over all service in the namespace
 	p := Reaper{
-		clientset: clientset,
-		expirer:   NewPQExpirer(timeToLive),
-		mapping:   make(map[string]Charter),
-		logger:    logger,
+		expirer: NewPQExpirer(timeToLive),
+		mapping: make(map[string]Charter),
+		logger:  logger,
 	}
 	util.MustGo(func() {
-		p.Watch(ctx)
+		p.Watch(ctx, pollEvery)
 	})
 	return &p
 }
 
 // Watch starts a background goroutine that culls k8s resources that have expired.
-func (p *Reaper) Watch(ctx context.Context) {
+func (p *Reaper) Watch(ctx context.Context, pollEvery time.Duration) {
 	// TODO: iterate over all services in the namespace to initialize the mapping
+	ticker := time.Tick(pollEvery)
 	for {
 		select {
 		case <-ctx.Done():
@@ -53,7 +50,9 @@ func (p *Reaper) Watch(ctx context.Context) {
 			services := p.expirer.Expire(ctx)
 			p.MustCull(ctx, services)
 			return
-		case <-time.After(5 * time.Minute):
+		// case <-time.After(5 * time.Minute):
+		case now := <-ticker:
+			p.logger.Debug("Reaper.Watch", "now", now)
 			services := p.expirer.Expire(ctx)
 			p.MustCull(ctx, services)
 		}
@@ -99,7 +98,7 @@ func (p *Reaper) MustCull(ctx context.Context, services []string) {
 			continue
 		}
 
-		err := chart.Teardown(ctx, p.clientset)
+		err := chart.Teardown(ctx)
 		if err != nil {
 			p.logger.Error("chart.Teardown()", "error", err, "service", service)
 			continue

@@ -40,6 +40,15 @@ type UploadResponse struct {
 	Message string `json:"message"`
 }
 
+type Charter struct {
+	chart  *helm.Chart
+	client *kubernetes.Clientset
+}
+
+func (c *Charter) Teardown(ctx context.Context) error {
+	return c.chart.Teardown(ctx, c.client)
+}
+
 func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *kubernetes.Clientset) http.HandlerFunc {
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
@@ -72,8 +81,14 @@ func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *ku
 			return
 		}
 
+		// wrap client with chart
+		charter := Charter{
+			chart:  &chart,
+			client: client,
+		}
+
 		// update the reaper
-		reaper.MustRegister(r.Context(), chart.Service().Name, &chart)
+		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
 
 		// TODO: wait until service is ready
 		w.WriteHeader(http.StatusOK)
@@ -88,7 +103,8 @@ func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *ku
 
 func run(ctx context.Context, logger *slog.Logger, port int, client *kubernetes.Clientset) error {
 	// initialize the reaper
-	reaper := pkg_reaper.New(ctx, client, 10*time.Minute, logger)
+	// for debugging, we set a very short time to live and a very short poll every
+	reaper := pkg_reaper.New(ctx, 10*time.Second, 30*time.Second, logger)
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
