@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"poorman-faas/pkg"
 	"poorman-faas/pkg/helm"
 	pkg_reaper "poorman-faas/pkg/reaper"
+	"poorman-faas/pkg/util"
 
 	"k8s.io/client-go/kubernetes"
 )
@@ -36,7 +38,10 @@ func (c *Charter) Teardown(ctx context.Context) error {
 	return c.chart.Teardown(ctx, c.client)
 }
 
-func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *kubernetes.Clientset) http.HandlerFunc {
+func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.HandlerFunc {
+	k8sNamespace := config.K8sNamespace
+	client := config.K8SClientset
+
 	writeErrorResponse := func(w http.ResponseWriter, statusCode int, err error) {
 		w.WriteHeader(statusCode)
 		_ = json.NewEncoder(w).Encode(UploadResponse{
@@ -49,22 +54,27 @@ func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *ku
 		var req UploadRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("json.NewDecoder().Decode(): %w", err))
 			return
 		}
 
 		// create a helm chart
 		chart, err := helm.NewChart(k8sNamespace, req.Script)
 		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, err)
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("helm.NewChart(): %w", err))
 			return
 		}
 
 		// deploy the chart
 		err = chart.Deploy(r.Context(), client)
 		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, err)
-			// TODO: running `defer chart.Teardown(r.Context(), client)` in the background
+			// TODO: check error status of Teardown
+			newErr := chart.Teardown(r.Context(), client)
+			if newErr != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("chart.Deploy(): %w, chart.Teardown(): %w", err, newErr))
+				return
+			}
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("chart.Deploy(): %w", err))
 			return
 		}
 
@@ -78,9 +88,14 @@ func getUploadHandler(k8sNamespace string, reaper *pkg_reaper.Reaper, client *ku
 		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
 
 		// TODO: wait until service is ready
+		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("util.K8sExternalDomainName(): %w", err))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(UploadResponse{
-			URL:     fmt.Sprintf("http://%s.%s.svc.cluster.local", chart.Service().Name, chart.Namespace),
+			URL:     ip,
 			Code:    http.StatusOK,
 			Message: "success",
 		})

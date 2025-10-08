@@ -18,8 +18,9 @@ type Config struct {
 	ReaperPollEvery  time.Duration `env:"REAPER_POLL_EVERY" envDefault:"10s"`
 	ReaperTimeToLive time.Duration `env:"REAPER_TIME_TO_LIVE" envDefault:"30s"`
 	// for k8s resouces
-	K8SClientset *kubernetes.Clientset
-	K8sNamespace string `env:"K8S_NAMESPACE" envDefault:"faas"`
+	K8SClientset        *kubernetes.Clientset
+	K8sNamespace        string `env:"K8S_NAMESPACE" envDefault:"faas"`
+	K8sLoadBalancerPort int    `env:"K8S_LOAD_BALANCER_PORT" envDefault:"8080"`
 	// for gateway
 	Port              int    `env:"PORT" envDefault:"8080"`
 	GatewayPathPrefix string `env:"GATEWAY_PATH_PREFIX" envDefault:"/gateway"`

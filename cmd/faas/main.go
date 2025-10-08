@@ -34,7 +34,7 @@ func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 		// because this creates k8s resource, we are extra careful.
 		// for example, see e2b create sandbox rate limit at 5/second.
 		admin.Use(httprate.LimitByIP(10, time.Minute))
-		admin.Post("/python", getUploadHandler(cfg.K8sNamespace, reaper, cfg.K8SClientset))
+		admin.Post("/python", getUploadHandler(cfg, reaper))
 		r.Mount("/admin", admin)
 	}
 	// gateway routes: this proxies to the faas service.
