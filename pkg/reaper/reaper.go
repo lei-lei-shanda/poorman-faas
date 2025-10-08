@@ -66,6 +66,7 @@ func (p *Reaper) MustRegister(ctx context.Context, service string, chart Charter
 	defer p.mu.Unlock()
 	if _, exists := p.mapping[service]; !exists {
 		p.mapping[service] = chart
+		p.logger.Debug("Reaper.MustRegister", "service", service)
 	}
 
 	err := p.expirer.Update(ctx, service)
@@ -105,5 +106,6 @@ func (p *Reaper) MustCull(ctx context.Context, services []string) {
 			continue
 		}
 		delete(p.mapping, service)
+		p.logger.Debug("Reaper.MustCull", "service", service)
 	}
 }
