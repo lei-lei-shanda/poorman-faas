@@ -19,17 +19,23 @@ func K8SInternalDNSName(namespace string, serviceName string) string {
 // K8sExternalDomainName returns the gateway url (with schema).
 //
 // https://{lb-ip}:{lb-port}/{gateway-prefix}/{svc-name}
-func K8sExternalDomainName(ctx context.Context, clientset *kubernetes.Clientset, loadBalancerPort int, gatewayPrefix string, namespace string, serviceName string) (string, error) {
-	svc, err := clientset.CoreV1().Services(namespace).Get(context.Background(), serviceName, metav1.GetOptions{})
+func K8sExternalDomainName(ctx context.Context, clientset *kubernetes.Clientset, loadBalancerPort int, gatewayServiceName string, gatewayPrefix string, namespace string, serviceName string) (string, error) {
+	svc, err := clientset.CoreV1().Services(namespace).Get(context.Background(), gatewayServiceName, metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("clientset.CoreV1().Services(%s).Get(%s): %w", namespace, serviceName, err)
+		return "", fmt.Errorf("clientset.CoreV1().Services(%s).Get(%s): %w", namespace, gatewayServiceName, err)
 	}
 
 	// TODO: use url.Parse to check
 	// TODO: already checked that service is read when creating helm.Chart
+	if len(svc.Status.LoadBalancer.Ingress) == 0 {
+		return "", fmt.Errorf("svc.Status.LoadBalancer.Ingress is empty")
+	}
 	LoadBalancerIP := svc.Status.LoadBalancer.Ingress[0].IP
-	if LoadBalancerIP == "" || LoadBalancerIP == "<pending>" {
-		return "", fmt.Errorf("svc.Status.LoadBalancer.Ingress[0].IP is empty or pending")
+	if LoadBalancerIP == "" {
+		return "", fmt.Errorf("svc.Status.LoadBalancer.Ingress[0].IP is empty")
+	}
+	if LoadBalancerIP == "<pending>" {
+		return "", fmt.Errorf("svc.Status.LoadBalancer.Ingress[0].IP is pending")
 	}
 	return fmt.Sprintf("https://%s:%d%s/%s", LoadBalancerIP, loadBalancerPort, gatewayPrefix, serviceName), nil
 }

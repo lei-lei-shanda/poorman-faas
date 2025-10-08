@@ -22,8 +22,9 @@ type Config struct {
 	K8sNamespace        string `env:"K8S_NAMESPACE" envDefault:"faas"`
 	K8sLoadBalancerPort int    `env:"K8S_LOAD_BALANCER_PORT" envDefault:"8080"`
 	// for gateway
-	Port              int    `env:"PORT" envDefault:"8080"`
-	GatewayPathPrefix string `env:"GATEWAY_PATH_PREFIX" envDefault:"/gateway"`
+	Port               int    `env:"PORT" envDefault:"8080"`
+	GatewayServiceName string `env:"GATEWAY_SERVICE_NAME" envDefault:"faas-gateway"`
+	GatewayPathPrefix  string `env:"GATEWAY_PATH_PREFIX" envDefault:"/gateway"`
 }
 
 // GetConfig parses the environment variables and returns a Config.

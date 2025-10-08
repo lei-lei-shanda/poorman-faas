@@ -88,7 +88,7 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
 
 		// TODO: wait until service is ready
-		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
+		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayServiceName, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("util.K8sExternalDomainName(): %w", err))
 			return
