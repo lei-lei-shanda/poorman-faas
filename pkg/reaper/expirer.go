@@ -1,4 +1,4 @@
-package pruner
+package reaper
 
 import (
 	"container/heap"

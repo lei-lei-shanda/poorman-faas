@@ -1,8 +1,8 @@
-// Package pruner prunes k8s resources that are not needed anymore.
+// Package reaper culls k8s resources that are not needed anymore.
 //
 // This is similiar to Knative serving, that scales down to zero pods.
 // https://knative.dev/docs/serving/autoscaling/pruning/
-package pruner
+package reaper
 
 import (
 	"context"
@@ -19,8 +19,8 @@ type Charter interface {
 	Teardown(ctx context.Context, clientset *kubernetes.Clientset) error
 }
 
-// Pruner is a service that prunes resources that have expired.
-type Pruner struct {
+// Reaper is a service that prunes resources that have expired.
+type Reaper struct {
 	clientset *kubernetes.Clientset
 	expirer   Expirer
 	logger    *slog.Logger
@@ -29,10 +29,10 @@ type Pruner struct {
 	mapping map[string]Charter
 }
 
-// NewPruner creates a new Pruner with the given clientset and time to live.
-func NewPruner(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Pruner {
+// NewReaper creates a new Pruner with the given clientset and time to live.
+func NewReaper(ctx context.Context, clientset *kubernetes.Clientset, timeToLive time.Duration, logger *slog.Logger) *Reaper {
 	// TODO: iterate over all service in the namespace
-	p := Pruner{
+	p := Reaper{
 		clientset: clientset,
 		expirer:   NewPQExpirer(timeToLive),
 		mapping:   make(map[string]Charter),
@@ -45,23 +45,23 @@ func NewPruner(ctx context.Context, clientset *kubernetes.Clientset, timeToLive 
 }
 
 // Watch starts a background goroutine that prunes resources that have expired.
-func (p *Pruner) Watch(ctx context.Context) {
+func (p *Reaper) Watch(ctx context.Context) {
 	// TODO: iterate over all services in the namespace to initialize the mapping
 	for {
 		select {
 		case <-ctx.Done():
 			// clean up on exit
 			services := p.expirer.Expire(ctx)
-			p.MustPrune(ctx, services)
+			p.MustCull(ctx, services)
 			return
 		case <-time.After(5 * time.Minute):
 			services := p.expirer.Expire(ctx)
-			p.MustPrune(ctx, services)
+			p.MustCull(ctx, services)
 		}
 	}
 }
 
-func (p *Pruner) MustRegister(ctx context.Context, service string, chart Charter) {
+func (p *Reaper) MustRegister(ctx context.Context, service string, chart Charter) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, exists := p.mapping[service]; !exists {
@@ -75,7 +75,7 @@ func (p *Pruner) MustRegister(ctx context.Context, service string, chart Charter
 	}
 }
 
-func (p *Pruner) MustUpdate(ctx context.Context, service string) {
+func (p *Reaper) MustUpdate(ctx context.Context, service string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if _, exists := p.mapping[service]; !exists {
@@ -88,7 +88,7 @@ func (p *Pruner) MustUpdate(ctx context.Context, service string) {
 	}
 }
 
-func (p *Pruner) MustPrune(ctx context.Context, services []string) {
+func (p *Reaper) MustCull(ctx context.Context, services []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, service := range services {
