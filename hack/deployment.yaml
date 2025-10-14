@@ -31,7 +31,7 @@ spec:
         - name: REAPER_POLL_EVERY
           value: "10s"
         - name: REAPER_TIME_TO_LIVE
-          value: "30s"
+          value: "10m"
         - name: K8S_NAMESPACE
           value: "faas"
         - name: K8S_LOAD_BALANCER_PORT

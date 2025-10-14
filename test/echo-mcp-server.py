@@ -1,7 +1,7 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.12"
 # dependencies = [
-#     "mcp",
+#     "mcp>=1.12",
 #     "pydantic",
 # ]
 # ///
@@ -15,7 +15,7 @@ from pydantic import BaseModel
 import os
 
 # Initialize the MCP server
-mcp = FastMCP("EchoServer", stateless_http=True, json_response=True)
+mcp = FastMCP("EchoServer", stateless_http=True, json_response=True, port=8000, host="0.0.0.0")
 hidden_message = os.getenv("HIDDEN_MESSAGE", "failed")
 
 
