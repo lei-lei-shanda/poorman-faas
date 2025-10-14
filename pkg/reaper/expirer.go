@@ -3,6 +3,7 @@ package reaper
 import (
 	"container/heap"
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -77,6 +78,7 @@ func (e *PQExpirer) Expire(ctx context.Context) []string {
 		// Check if it has expired
 		if now.Sub(oldest.lastAccess) >= e.TimeToLive {
 			// Pop and collect expired item
+			slog.Debug("Expiring item", "uuid", oldest.uuid, "lastAccess", oldest.lastAccess)
 			item := heap.Pop(&e.pq).(*item)
 			delete(e.items, item.uuid)
 			expired = append(expired, item.uuid)

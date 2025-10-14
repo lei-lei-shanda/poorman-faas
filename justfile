@@ -33,8 +33,9 @@ dev binary: (build binary)
 # build containerimage
 [group('deploy')]
 build-faas:
-	podman build -t faas-gateway-app:latest -f {{justfile_directory()}}/cmd/faas/Dockerfile {{justfile_directory()}}
-	kind load docker-image localhost/faas-gateway-app:latest --name $(kind get clusters)
+    docker buildx build --platform linux/amd64,linux/arm64 -t  ghcr.io/miromindai/faas-gateway-app:latest  --push \
+    -f {{justfile_directory()}}/cmd/faas/Dockerfile {{justfile_directory()}}
+#	kind load docker-image localhost/faas-gateway-app:latest --name $(kind get clusters)
 
 # deploy service to k8s cluster
 [group('deploy')]

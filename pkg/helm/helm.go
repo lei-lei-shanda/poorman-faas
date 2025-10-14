@@ -142,6 +142,9 @@ func (s Chart) Deployment() *appsv1.Deployment {
 			Template: apiv1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: s.Selector(),
+					Annotations: map[string]string{
+						"vke.volcengine.com/burst-to-vci": "enforce",
+					},
 				},
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{{
@@ -149,6 +152,7 @@ func (s Chart) Deployment() *appsv1.Deployment {
 						Image:   "ghcr.io/astral-sh/uv:python3.12-alpine",
 						Command: []string{"uv", "run", "--script", "/scripts/main.py"},
 						Ports: []apiv1.ContainerPort{{
+							// todo: make port configurable
 							ContainerPort: 8000,
 							Protocol:      apiv1.ProtocolTCP,
 						}},
@@ -192,7 +196,7 @@ func (s Chart) Service() *apiv1.Service {
 			Ports: []apiv1.ServicePort{{
 				Port:       80,
 				Protocol:   apiv1.ProtocolTCP,
-				TargetPort: intstr.FromInt(8000),
+				TargetPort: intstr.FromInt32(8000),
 			}},
 		},
 	}

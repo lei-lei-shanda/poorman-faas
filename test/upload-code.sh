@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+set -x
 
 NAMESPACE="faas"
 SERVICE_NAME="faas-gateway"
 
-LB_IP=$(kubectl -n ${NAMESPACE} get svc/${SERVICE_NAME} -o=jsonpath='{.status.loadBalancer.ingress[0].ip}')
+LB_IP=localhost
 
 echo "LB_IP: ${LB_IP}"
 

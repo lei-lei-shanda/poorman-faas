@@ -27,6 +27,8 @@ func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
+	faas := chi.NewRouter()
+	r.Mount("/faas", faas)
 	// admin routes: this creates faas service.
 	{
 		admin := chi.NewRouter()
@@ -35,7 +37,7 @@ func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 		// for example, see e2b create sandbox rate limit at 5/second.
 		admin.Use(httprate.LimitByIP(10, time.Minute))
 		admin.Post("/python", getUploadHandler(cfg, reaper))
-		r.Mount("/admin", admin)
+		faas.Mount("/admin", admin)
 	}
 	// gateway routes: this proxies to the faas service.
 	{
@@ -61,7 +63,7 @@ func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 			return fmt.Errorf("proxy.New(): %w", err)
 		}
 		gateway.Handle("/{svcName}/*", rp)
-		r.Mount(cfg.GatewayPathPrefix, gateway)
+		faas.Mount(cfg.GatewayPathPrefix, gateway)
 	}
 	// add health check route
 	{
