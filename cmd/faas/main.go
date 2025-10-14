@@ -23,7 +23,7 @@ import (
 func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
 	// initialize the reaper
 	// for debugging, we set a very short time to live and a very short poll every
-	reaper := pkg_reaper.New(ctx, 10*time.Second, 30*time.Second, logger)
+	reaper := pkg_reaper.New(ctx, cfg.ReaperPollEvery, cfg.ReaperTimeToLive, logger)
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))
