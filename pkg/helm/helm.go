@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -15,6 +16,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 )
@@ -219,12 +221,39 @@ func (s Chart) Deploy(ctx context.Context, clientset *kubernetes.Clientset) erro
 	if err != nil {
 		return fmt.Errorf("deploymentClient.Create(): %w", err)
 	}
+
+	// Wait until deployment is ready (with 5 minute timeout)
+	err = s.waitForDeploymentReady(ctx, clientset, 5*time.Minute)
+	if err != nil {
+		return fmt.Errorf("waitForDeploymentReady(): %w", err)
+	}
+
 	serviceClient := clientset.CoreV1().Services(ns)
 	_, err = serviceClient.Create(ctx, s.Service(), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("serviceClient.Create(): %w", err)
 	}
 	return nil
+}
+
+// waitForDeploymentReady waits for the deployment to be ready with a timeout.
+func (s Chart) waitForDeploymentReady(ctx context.Context, clientset *kubernetes.Clientset, timeout time.Duration) error {
+	deploymentClient := clientset.AppsV1().Deployments(s.Namespace)
+
+	return wait.PollUntilContextTimeout(ctx, 1*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		deployment, err := deploymentClient.Get(ctx, s.deploymentUUID, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		// Check if deployment is ready
+		if deployment.Status.ReadyReplicas == *deployment.Spec.Replicas &&
+			deployment.Status.ReadyReplicas > 0 {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }
 
 // Teardown removes the Python Faas from the k8s cluster.
