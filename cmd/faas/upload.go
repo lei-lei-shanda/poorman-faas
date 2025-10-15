@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,9 @@ import (
 	"poorman-faas/pkg/helm"
 	pkg_reaper "poorman-faas/pkg/reaper"
 	"poorman-faas/pkg/util"
+
+	"gorm.io/gorm/logger"
+	"k8s.io/client-go/kubernetes"
 )
 
 type UploadOption struct {
@@ -25,6 +29,15 @@ type UploadResponse struct {
 	URL     string `json:"url"`
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+type Charter struct {
+	chart  *helm.Chart
+	client *kubernetes.Clientset
+}
+
+func (c *Charter) Teardown(ctx context.Context) error {
+	return c.chart.Teardown(ctx, c.client)
 }
 
 func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.HandlerFunc {
@@ -68,13 +81,29 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 			return
 		}
 
-		// wrap chart for the reaper
-		wrapper := helm.NewChartWrapper(&chart, client)
+		// wait for deployment to become ready (readiness probe will ensure service is healthy)
+		err = util.WaitForServiceHealth(r.Context(), client, k8sNamespace, chart.Deployment().Name, logger)
+		if err != nil {
+			logger.Error("Deployment readiness check failed, tearing down", "deployment", chart.Deployment().Name, "error", err)
+			// teardown the chart since readiness check failed
+			teardownErr := chart.Teardown(r.Context(), client)
+			if teardownErr != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w, chart.Teardown() also failed: %w", err, teardownErr))
+				return
+			}
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w", err))
+			return
+		}
 
-		// register with the reaper
-		reaper.MustRegister(r.Context(), wrapper.ServiceName(), wrapper)
+		// wrap client with chart
+		charter := Charter{
+			chart:  &chart,
+			client: client,
+		}
 
-		// TODO: wait until service is ready
+		// update the reaper
+		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
+
 		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayServiceName, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("util.K8sExternalDomainName(): %w", err))
