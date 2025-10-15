@@ -23,81 +23,85 @@ type DiscoveredChart struct {
 func DiscoverCharts(ctx context.Context, clientset *kubernetes.Clientset, namespace string, logger *slog.Logger) []DiscoveredChart {
 	var discovered []DiscoveredChart
 
-	// List all Services and filter by annotation
-	// Note: annotations don't support selectors directly, so we need to list all and filter manually
+	// Use label selector to filter managed resources at the API level
+	labelSelector := LabelManagedBy + "=true"
+	listOptions := metav1.ListOptions{
+		LabelSelector: labelSelector,
+	}
+
+	// List only managed resources using label selector
 	serviceClient := clientset.CoreV1().Services(namespace)
-	services, err := serviceClient.List(ctx, metav1.ListOptions{})
+	services, err := serviceClient.List(ctx, listOptions)
 	if err != nil {
 		logger.Error("failed to list services during discovery", "error", err)
 		return discovered
 	}
 
-	logger.Info("discovering charts from cluster", "namespace", namespace, "total_services", len(services.Items))
+	deploymentClient := clientset.AppsV1().Deployments(namespace)
+	deployments, err := deploymentClient.List(ctx, listOptions)
+	if err != nil {
+		logger.Error("failed to list deployments during discovery", "error", err)
+		return discovered
+	}
 
-	// Filter services by annotation and process each one
-	for _, service := range services.Items {
-		// Check if this service is managed by poorman-faas
-		if service.Annotations == nil || service.Annotations[AnnotationManagedBy] != "true" {
-			continue
-		}
+	configMapClient := clientset.CoreV1().ConfigMaps(namespace)
+	configMaps, err := configMapClient.List(ctx, listOptions)
+	if err != nil {
+		logger.Error("failed to list configmaps during discovery", "error", err)
+		return discovered
+	}
 
-		logger.Debug("found managed service", "service", service.Name)
+	logger.Info("discovering charts from cluster", "namespace", namespace, "total_services", len(services.Items), "total_deployments", len(deployments.Items), "total_configmaps", len(configMaps.Items))
 
-		// Get the service ID from annotations
-		serviceID, exists := service.Annotations[AnnotationServiceID]
+	// Build maps: uuid -> service, uuid -> deployment, uuid -> configmap
+	serviceByUUID := make(map[string]*apiv1.Service)
+	deploymentByUUID := make(map[string]*appsv1.Deployment)
+	configMapByUUID := make(map[string]*apiv1.ConfigMap)
+
+	// Collect all services by UUID (already filtered by label selector)
+	for i := range services.Items {
+		service := &services.Items[i]
+
+		serviceID, exists := service.Labels[LabelServiceID]
 		if !exists {
 			discovered = append(discovered, DiscoveredChart{
-				Error: fmt.Errorf("service %s missing %s annotation", service.Name, AnnotationServiceID),
+				Error: fmt.Errorf("service %s missing %s label", service.Name, LabelServiceID),
 			})
 			continue
 		}
 
-		// Find the corresponding Deployment
-		deploymentClient := clientset.AppsV1().Deployments(namespace)
-		deployments, err := deploymentClient.List(ctx, metav1.ListOptions{})
-		if err != nil {
-			discovered = append(discovered, DiscoveredChart{
-				Error: fmt.Errorf("failed to list deployments for service %s: %w", service.Name, err),
-			})
-			continue
-		}
+		logger.Debug("found managed service", "service", service.Name, "uuid", serviceID)
+		serviceByUUID[serviceID] = service
+	}
 
-		var matchingDeployment *appsv1.Deployment
-		for i := range deployments.Items {
-			d := &deployments.Items[i]
-			if d.Annotations != nil && d.Annotations[AnnotationServiceID] == serviceID {
-				matchingDeployment = d
-				break
-			}
+	// Collect all deployments by UUID (already filtered by label selector)
+	for i := range deployments.Items {
+		deployment := &deployments.Items[i]
+		if serviceID, exists := deployment.Labels[LabelServiceID]; exists {
+			deploymentByUUID[serviceID] = deployment
 		}
+	}
 
-		if matchingDeployment == nil {
+	// Collect all configmaps by UUID (already filtered by label selector)
+	for i := range configMaps.Items {
+		configMap := &configMaps.Items[i]
+		if serviceID, exists := configMap.Labels[LabelServiceID]; exists {
+			configMapByUUID[serviceID] = configMap
+		}
+	}
+
+	// Link them up by UUID and reconstruct charts
+	for serviceID, service := range serviceByUUID {
+		deployment, hasDeployment := deploymentByUUID[serviceID]
+		if !hasDeployment {
 			discovered = append(discovered, DiscoveredChart{
 				Error: fmt.Errorf("no deployment found for service %s with service-id %s", service.Name, serviceID),
 			})
 			continue
 		}
 
-		// Find the corresponding ConfigMap
-		configMapClient := clientset.CoreV1().ConfigMaps(namespace)
-		configMaps, err := configMapClient.List(ctx, metav1.ListOptions{})
-		if err != nil {
-			discovered = append(discovered, DiscoveredChart{
-				Error: fmt.Errorf("failed to list configmaps for service %s: %w", service.Name, err),
-			})
-			continue
-		}
-
-		var matchingConfigMap *apiv1.ConfigMap
-		for i := range configMaps.Items {
-			cm := &configMaps.Items[i]
-			if cm.Annotations != nil && cm.Annotations[AnnotationServiceID] == serviceID {
-				matchingConfigMap = cm
-				break
-			}
-		}
-
-		if matchingConfigMap == nil {
+		configMap, hasConfigMap := configMapByUUID[serviceID]
+		if !hasConfigMap {
 			discovered = append(discovered, DiscoveredChart{
 				Error: fmt.Errorf("no configmap found for service %s with service-id %s", service.Name, serviceID),
 			})
@@ -105,7 +109,7 @@ func DiscoverCharts(ctx context.Context, clientset *kubernetes.Clientset, namesp
 		}
 
 		// Reconstruct the Chart from the k8s resources
-		chart, err := NewChartFromK8sResources(matchingConfigMap, matchingDeployment, &service)
+		chart, err := NewChartFromK8sResources(configMap, deployment, service)
 		if err != nil {
 			discovered = append(discovered, DiscoveredChart{
 				Error: fmt.Errorf("failed to reconstruct chart for service %s: %w", service.Name, err),
@@ -113,7 +117,7 @@ func DiscoverCharts(ctx context.Context, clientset *kubernetes.Clientset, namesp
 			continue
 		}
 
-		logger.Debug("successfully reconstructed chart", "service", service.Name, "configmap", matchingConfigMap.Name, "deployment", matchingDeployment.Name)
+		logger.Debug("successfully reconstructed chart", "service", service.Name, "configmap", configMap.Name, "deployment", deployment.Name)
 
 		discovered = append(discovered, DiscoveredChart{
 			Chart: chart,

@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	// AnnotationManagedBy marks resources as managed by poorman-faas
-	AnnotationManagedBy = "poorman-faas.io/managed"
-	// AnnotationServiceID links related resources together
-	AnnotationServiceID = "poorman-faas.io/service-id"
+	// LabelManagedBy is a label for filtering managed resources (supports selectors)
+	LabelManagedBy = "poorman-faas.io/managed"
+	// LabelServiceID is a label for linking related resources (supports selectors)
+	LabelServiceID = "poorman-faas.io/service-id"
 )
 
 // Chart hydrates various k8s resources via template.
@@ -163,9 +163,9 @@ func (s Chart) ConfigMap() *apiv1.ConfigMap {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.configMapUUID,
-			Annotations: map[string]string{
-				AnnotationManagedBy: "true",
-				AnnotationServiceID: s.serviceUUID,
+			Labels: map[string]string{
+				LabelManagedBy: "true",
+				LabelServiceID: s.serviceUUID,
 			},
 		},
 		Data: map[string]string{"main.py": string(s.script)},
@@ -190,9 +190,9 @@ func (s Chart) Deployment() *appsv1.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.deploymentUUID,
-			Annotations: map[string]string{
-				AnnotationManagedBy: "true",
-				AnnotationServiceID: s.serviceUUID,
+			Labels: map[string]string{
+				LabelManagedBy: "true",
+				LabelServiceID: s.serviceUUID,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -244,9 +244,9 @@ func (s Chart) Service() *apiv1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.serviceUUID,
-			Annotations: map[string]string{
-				AnnotationManagedBy: "true",
-				AnnotationServiceID: s.serviceUUID,
+			Labels: map[string]string{
+				LabelManagedBy: "true",
+				LabelServiceID: s.serviceUUID,
 			},
 		},
 		Spec: apiv1.ServiceSpec{
