@@ -21,9 +21,9 @@ import (
 )
 
 func run(ctx context.Context, cfg pkg.Config, logger *slog.Logger) error {
-	// initialize the reaper
+	// initialize the reaper (which also hydrates from existing cluster resources)
 	// for debugging, we set a very short time to live and a very short poll every
-	reaper := pkg_reaper.New(ctx, cfg.ReaperPollEvery, cfg.ReaperTimeToLive, logger)
+	reaper := pkg_reaper.New(ctx, cfg.ReaperPollEvery, cfg.ReaperTimeToLive, cfg.K8SClientset, cfg.K8sNamespace, logger)
 
 	r := chi.NewRouter()
 	r.Use(httplog.RequestLogger(logger, nil))

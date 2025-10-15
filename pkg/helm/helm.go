@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -17,6 +18,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	// AnnotationManagedBy marks resources as managed by poorman-faas
+	AnnotationManagedBy = "poorman-faas.io/managed"
+	// AnnotationServiceID links related resources together
+	AnnotationServiceID = "poorman-faas.io/service-id"
 )
 
 // Chart hydrates various k8s resources via template.
@@ -94,6 +102,50 @@ func NewChart(namespace string, scriptBase64 string, dotFileBase64 string) (Char
 	}, nil
 }
 
+// NewChartFromK8sResources reconstructs a Chart from existing k8s resources.
+// This is used for hydrating the reaper from existing cluster resources.
+// The script and dotFile fields will be empty as they are not needed for Teardown.
+func NewChartFromK8sResources(configMap *apiv1.ConfigMap, deployment *appsv1.Deployment, service *apiv1.Service) (Chart, error) {
+	// Extract appName from the selector labels
+	appName := ""
+	if deployment.Spec.Selector != nil && deployment.Spec.Selector.MatchLabels != nil {
+		appName = deployment.Spec.Selector.MatchLabels["app"]
+	}
+	if appName == "" {
+		return Chart{}, fmt.Errorf("deployment missing app label in selector")
+	}
+
+	// Extract UUIDs from resource names
+	// Names follow pattern: "configmap-{uuid}", "deployment-{uuid}", "service-{uuid}"
+	configMapUUID := configMap.Name
+	deploymentUUID := deployment.Name
+	serviceUUID := service.Name
+
+	// Extract UUID from serviceUUID to validate it's in the expected format
+	if !strings.HasPrefix(serviceUUID, "service-") {
+		return Chart{}, fmt.Errorf("service name does not follow expected pattern: %s", serviceUUID)
+	}
+
+	// Extract environment variables from deployment
+	env := make(map[string]string)
+	if len(deployment.Spec.Template.Spec.Containers) > 0 {
+		for _, envVar := range deployment.Spec.Template.Spec.Containers[0].Env {
+			env[envVar.Name] = envVar.Value
+		}
+	}
+
+	return Chart{
+		appName:        appName,
+		Namespace:      service.Namespace,
+		configMapUUID:  configMapUUID,
+		deploymentUUID: deploymentUUID,
+		serviceUUID:    serviceUUID,
+		script:         nil, // not needed for Teardown
+		dotFile:        nil, // not needed for Teardown
+		env:            env,
+	}, nil
+}
+
 func (s Chart) Selector() map[string]string {
 	return map[string]string{
 		"app": s.appName,
@@ -111,6 +163,10 @@ func (s Chart) ConfigMap() *apiv1.ConfigMap {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.configMapUUID,
+			Annotations: map[string]string{
+				AnnotationManagedBy: "true",
+				AnnotationServiceID: s.serviceUUID,
+			},
 		},
 		Data: map[string]string{"main.py": string(s.script)},
 	}
@@ -134,6 +190,10 @@ func (s Chart) Deployment() *appsv1.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.deploymentUUID,
+			Annotations: map[string]string{
+				AnnotationManagedBy: "true",
+				AnnotationServiceID: s.serviceUUID,
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -184,6 +244,10 @@ func (s Chart) Service() *apiv1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: s.Namespace,
 			Name:      s.serviceUUID,
+			Annotations: map[string]string{
+				AnnotationManagedBy: "true",
+				AnnotationServiceID: s.serviceUUID,
+			},
 		},
 		Spec: apiv1.ServiceSpec{
 			// https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
@@ -221,6 +285,31 @@ func (s Chart) Deploy(ctx context.Context, clientset *kubernetes.Clientset) erro
 		return fmt.Errorf("serviceClient.Create(): %w", err)
 	}
 	return nil
+}
+
+// ChartWrapper wraps a Chart with a clientset to implement the Charter interface.
+// This allows Charts to be managed by the Reaper.
+type ChartWrapper struct {
+	chart     *Chart
+	clientset *kubernetes.Clientset
+}
+
+// NewChartWrapper creates a new ChartWrapper.
+func NewChartWrapper(chart *Chart, clientset *kubernetes.Clientset) *ChartWrapper {
+	return &ChartWrapper{
+		chart:     chart,
+		clientset: clientset,
+	}
+}
+
+// Teardown implements the Charter interface.
+func (cw *ChartWrapper) Teardown(ctx context.Context) error {
+	return cw.chart.Teardown(ctx, cw.clientset)
+}
+
+// ServiceName returns the service name for this chart.
+func (cw *ChartWrapper) ServiceName() string {
+	return cw.chart.Service().Name
 }
 
 // Teardown removes the Python Faas from the k8s cluster.
