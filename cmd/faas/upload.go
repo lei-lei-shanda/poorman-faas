@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,8 +8,6 @@ import (
 	"poorman-faas/pkg/helm"
 	pkg_reaper "poorman-faas/pkg/reaper"
 	"poorman-faas/pkg/util"
-
-	"k8s.io/client-go/kubernetes"
 )
 
 type UploadOption struct {
@@ -28,15 +25,6 @@ type UploadResponse struct {
 	URL     string `json:"url"`
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-}
-
-type Charter struct {
-	chart  *helm.Chart
-	client *kubernetes.Clientset
-}
-
-func (c *Charter) Teardown(ctx context.Context) error {
-	return c.chart.Teardown(ctx, c.client)
 }
 
 func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.HandlerFunc {
@@ -80,14 +68,11 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 			return
 		}
 
-		// wrap client with chart
-		charter := Charter{
-			chart:  &chart,
-			client: client,
-		}
+		// wrap chart for the reaper
+		wrapper := helm.NewChartWrapper(&chart, client)
 
-		// update the reaper
-		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
+		// register with the reaper
+		reaper.MustRegister(r.Context(), wrapper.ServiceName(), wrapper)
 
 		// TODO: wait until service is ready
 		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayServiceName, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)

@@ -7,9 +7,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"poorman-faas/pkg/helm"
 	"poorman-faas/pkg/util"
 	"sync"
 	"time"
+
+	"k8s.io/client-go/kubernetes"
 )
 
 type Charter interface {
@@ -26,13 +29,35 @@ type Reaper struct {
 }
 
 // New creates a new Reaper with the given clientset and time to live.
-func New(ctx context.Context, pollEvery time.Duration, timeToLive time.Duration, logger *slog.Logger) *Reaper {
-	// TODO: iterate over all service in the namespace
+// It also discovers and hydrates existing charts from the k8s cluster.
+func New(ctx context.Context, pollEvery time.Duration, timeToLive time.Duration, clientset *kubernetes.Clientset, namespace string, logger *slog.Logger) *Reaper {
 	p := Reaper{
 		expirer: NewPQExpirer(timeToLive),
 		mapping: make(map[string]Charter),
 		logger:  logger,
 	}
+
+	// Hydrate the reaper from existing cluster resources
+	logger.Info("discovering existing charts in cluster", "namespace", namespace)
+	discovered := helm.DiscoverCharts(ctx, clientset, namespace, logger)
+
+	successCount := 0
+	for _, disc := range discovered {
+		if disc.Error != nil {
+			logger.Warn("failed to discover chart", "error", disc.Error)
+			continue
+		}
+
+		// Wrap the chart for the reaper
+		wrapper := helm.NewChartWrapper(&disc.Chart, clientset)
+
+		// Register the discovered chart with the reaper
+		p.MustRegister(ctx, wrapper.ServiceName(), wrapper)
+		successCount++
+	}
+
+	logger.Info("reaper hydration complete", "discovered", len(discovered), "success", successCount, "errors", len(discovered)-successCount)
+
 	util.MustGo(func() {
 		p.Watch(ctx, pollEvery)
 	})
