@@ -40,7 +40,7 @@ build-faas:
 [group('deploy')]
 deploy-faas: build-faas
 	# because tag does not change, we need to manually remove the deployment
-	kubectl delete -f {{justfile_directory()}}/hack/deployment.yaml
+	# kubectl delete -f {{justfile_directory()}}/hack/deployment.yaml
 	# rest
 	kubectl apply -f {{justfile_directory()}}/hack/namespace.yaml
 	kubectl apply -f {{justfile_directory()}}/hack/rbac.yaml
