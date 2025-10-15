@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"poorman-faas/pkg"
 	"poorman-faas/pkg/helm"
@@ -39,7 +40,7 @@ func (c *Charter) Teardown(ctx context.Context) error {
 	return c.chart.Teardown(ctx, c.client)
 }
 
-func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.HandlerFunc {
+func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper, logger *slog.Logger) http.HandlerFunc {
 	k8sNamespace := config.K8sNamespace
 	client := config.K8SClientset
 
@@ -80,6 +81,20 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 			return
 		}
 
+		// wait for deployment to become ready (readiness probe will ensure service is healthy)
+		err = util.WaitForServiceHealth(r.Context(), client, k8sNamespace, chart.Deployment().Name, logger)
+		if err != nil {
+			logger.Error("Deployment readiness check failed, tearing down", "deployment", chart.Deployment().Name, "error", err)
+			// teardown the chart since readiness check failed
+			teardownErr := chart.Teardown(r.Context(), client)
+			if teardownErr != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w, chart.Teardown() also failed: %w", err, teardownErr))
+				return
+			}
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w", err))
+			return
+		}
+
 		// wrap client with chart
 		charter := Charter{
 			chart:  &chart,
@@ -89,7 +104,6 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 		// update the reaper
 		reaper.MustRegister(r.Context(), chart.Service().Name, &charter)
 
-		// TODO: wait until service is ready
 		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayServiceName, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("util.K8sExternalDomainName(): %w", err))
