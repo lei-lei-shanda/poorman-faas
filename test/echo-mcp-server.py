@@ -69,5 +69,7 @@ app = Starlette(
 
 
 if __name__ == "__main__":
+    # this starts the task group in the background
+    mcp.run(transport="streamable-http")
     # Start the Starlette server
     uvicorn.run(app, host="0.0.0.0", port=8000)
