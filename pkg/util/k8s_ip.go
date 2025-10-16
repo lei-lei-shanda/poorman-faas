@@ -53,7 +53,7 @@ func WaitForServiceHealth(ctx context.Context, clientset *kubernetes.Clientset, 
 	deploymentClient := clientset.AppsV1().Deployments(namespace)
 
 	// Wait up to 60 seconds, checking every 5 seconds (12 attempts)
-	maxAttempts := 12
+	maxAttempts := 13
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
