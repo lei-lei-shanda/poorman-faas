@@ -12,6 +12,7 @@
 A simple MCP echo server that echoes back messages.
 """
 
+import asyncio
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 from starlette.applications import Starlette
@@ -34,7 +35,7 @@ class EchoOutput(BaseModel):
 
 
 # Initialize the MCP server
-mcp = FastMCP("EchoServer", stateless_http=True, json_response=True)
+mcp = FastMCP("EchoServer", stateless_http=True, json_response=True, port=8001)
 
 
 @mcp.tool()
@@ -59,17 +60,8 @@ async def health_check(request):
     return JSONResponse({"status": "ok"})
 
 
-# Create Starlette app with health endpoint and MCP server mounted
-app = Starlette(
-    routes=[
-        Route("/health", health_check),
-        Mount("/mcp", app=mcp.streamable_http_app()),
-    ]
-)
-
-
 if __name__ == "__main__":
-    # this starts the task group in the background
-    mcp.run(transport="streamable-http")
-    # Start the Starlette server
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    asgi_app = mcp.streamable_http_app()
+    asgi_app.add_route("/health", health_check)
+    uvicorn.run(asgi_app, host="0.0.0.0", port=8000)
+
