@@ -54,12 +54,26 @@ func WaitForServiceHealth(ctx context.Context, clientset *kubernetes.Clientset, 
 
 	// Wait up to 60 seconds, checking every 5 seconds (12 attempts)
 	maxAttempts := 12
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for deployment %s: %w", deploymentName, ctx.Err())
+		default:
+		}
+
 		deployment, err := deploymentClient.Get(ctx, deploymentName, metav1.GetOptions{})
 		if err != nil {
 			logger.Warn("Failed to get deployment status", "error", err, "attempt", attempt)
 			if attempt < maxAttempts {
-				time.Sleep(5 * time.Second)
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("context cancelled while waiting for deployment %s: %w", deploymentName, ctx.Err())
+				case <-ticker.C:
+				}
 			}
 			continue
 		}
@@ -90,7 +104,11 @@ func WaitForServiceHealth(ctx context.Context, clientset *kubernetes.Clientset, 
 		}
 
 		if attempt < maxAttempts {
-			time.Sleep(5 * time.Second)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled while waiting for deployment %s: %w", deploymentName, ctx.Err())
+			case <-ticker.C:
+			}
 		}
 	}
 
