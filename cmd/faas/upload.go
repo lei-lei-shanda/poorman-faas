@@ -69,17 +69,17 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper, logger *slog
 			return
 		}
 
-		// wait for deployment to become ready (readiness probe will ensure service is healthy)
+		// wait for deployment to become ready (liveness probe will ensure service is healthy)
 		err = util.WaitForServiceHealth(r.Context(), client, k8sNamespace, chart.Deployment().Name, logger)
 		if err != nil {
-			logger.Error("Deployment readiness check failed, tearing down", "deployment", chart.Deployment().Name, "error", err)
-			// teardown the chart since readiness check failed
+			logger.Error("Deployment liveness check failed, tearing down", "deployment", chart.Deployment().Name, "error", err)
+			// teardown the chart since liveness check failed
 			teardownErr := chart.Teardown(r.Context(), client)
 			if teardownErr != nil {
-				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w, chart.Teardown() also failed: %w", err, teardownErr))
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment liveness check failed: %w, chart.Teardown() also failed: %w", err, teardownErr))
 				return
 			}
-			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment readiness check failed: %w", err))
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment liveness check failed: %w", err))
 			return
 		}
 
