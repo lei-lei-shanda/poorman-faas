@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"poorman-faas/pkg"
 	"poorman-faas/pkg/helm"
@@ -27,7 +28,7 @@ type UploadResponse struct {
 	Message string `json:"message"`
 }
 
-func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.HandlerFunc {
+func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper, logger *slog.Logger) http.HandlerFunc {
 	k8sNamespace := config.K8sNamespace
 	client := config.K8SClientset
 
@@ -68,13 +69,23 @@ func getUploadHandler(config pkg.Config, reaper *pkg_reaper.Reaper) http.Handler
 			return
 		}
 
-		// wrap chart for the reaper
-		wrapper := helm.NewChartWrapper(&chart, client)
+		// wait for deployment to become ready (liveness probe will ensure service is healthy)
+		err = util.WaitForServiceHealth(r.Context(), client, k8sNamespace, chart.Deployment().Name, logger)
+		if err != nil {
+			logger.Error("Deployment liveness check failed, tearing down", "deployment", chart.Deployment().Name, "error", err)
+			// teardown the chart since liveness check failed
+			teardownErr := chart.Teardown(r.Context(), client)
+			if teardownErr != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment liveness check failed: %w, chart.Teardown() also failed: %w", err, teardownErr))
+				return
+			}
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("deployment liveness check failed: %w", err))
+			return
+		}
 
-		// register with the reaper
-		reaper.MustRegister(r.Context(), wrapper.ServiceName(), wrapper)
+		// update the reaper
+		reaper.MustRegister(r.Context(), chart.Service().Name, helm.NewChartWrapper(&chart, client))
 
-		// TODO: wait until service is ready
 		ip, err := util.K8sExternalDomainName(r.Context(), client, config.K8sLoadBalancerPort, config.GatewayServiceName, config.GatewayPathPrefix, config.K8sNamespace, chart.Service().Name)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Errorf("util.K8sExternalDomainName(): %w", err))

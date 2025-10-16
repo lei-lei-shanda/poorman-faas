@@ -2,6 +2,10 @@
 
 MCP_SERVER_PORT=8000
 MCP_SERVER_HOST=0.0.0.0
+# do health check
+curl -X GET "http://${MCP_SERVER_HOST}:${MCP_SERVER_PORT}/health"
+echo -e "\nHealth checked"
+
 # for mcp service
 # first initialize it
 curl -X POST "http://${MCP_SERVER_HOST}:${MCP_SERVER_PORT}/mcp" \
@@ -49,7 +53,7 @@ curl -X POST http://${MCP_SERVER_HOST}:${MCP_SERVER_PORT}/mcp \
     "params": {
       "name": "echo",
       "arguments": {
-        "message": "Hello, World!"
+        "message": {"message": "Hello, World!"}
       }
     }
   }'

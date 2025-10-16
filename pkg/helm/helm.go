@@ -217,6 +217,31 @@ func (s Chart) Deployment() *appsv1.Deployment {
 							Name:      "script-volume",
 							MountPath: "/scripts",
 						}},
+						StartupProbe: &apiv1.Probe{
+							ProbeHandler: apiv1.ProbeHandler{
+								HTTPGet: &apiv1.HTTPGetAction{
+									Path: "/health",
+									Port: intstr.FromInt(8000),
+								},
+							},
+							InitialDelaySeconds: 10,
+							PeriodSeconds:       5,
+							TimeoutSeconds:      3,
+							SuccessThreshold:    1,
+							FailureThreshold:    10, // 10 failures * 5s = 50s + 10s initial = 60s total
+						},
+						LivenessProbe: &apiv1.Probe{
+							ProbeHandler: apiv1.ProbeHandler{
+								HTTPGet: &apiv1.HTTPGetAction{
+									Path: "/health",
+									Port: intstr.FromInt(8000),
+								},
+							},
+							PeriodSeconds:    10,
+							TimeoutSeconds:   3,
+							SuccessThreshold: 1,
+							FailureThreshold: 3,
+						},
 					}},
 					Volumes: []apiv1.Volume{{
 						Name: "script-volume",
