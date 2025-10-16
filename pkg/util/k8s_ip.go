@@ -46,7 +46,7 @@ func K8sExternalDomainName(ctx context.Context, clientset *kubernetes.Clientset,
 // the deployment status. It waits up to 60 seconds, checking every 5 seconds.
 //
 // A deployment is considered ready when the number of available replicas equals the desired replicas
-// and the readiness probe succeeds. Returns nil if the deployment becomes ready, or an error if it times out.
+// (i.e., ReadyReplicas and AvailableReplicas match the desired count). Returns nil if the deployment becomes ready, or an error if it times out.
 func WaitForServiceHealth(ctx context.Context, clientset *kubernetes.Clientset, namespace string, deploymentName string, logger *slog.Logger) error {
 	logger.Info("Waiting for deployment to become ready", "deployment", deploymentName, "namespace", namespace)
 
